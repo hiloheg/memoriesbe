@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.server.ResponseStatusException;
+import ro.ghil.memoriesbe.credits.CreditService;
 import ro.ghil.memoriesbe.events.EventRepository;
 import ro.ghil.memoriesbe.profile.ProfileRepository;
 import ro.ghil.memoriesbe.sftpgo.SftpGoClient;
@@ -26,14 +27,18 @@ class AccountController {
     record EventExport(String name, String slug, LocalDate eventDate, String icon, String visibility, OffsetDateTime createdAt, List<CameraExport> cameras) {}
     record LinkExport(String label, String url) {}
     record ProfileExport(String name, String slug, String tagline, String bio, String website, String accent, boolean followGate, boolean hasUploadedPicture, boolean hasUploadedLogo, List<LinkExport> links) {}
-    record Export(String email, String googleAccountId, ProfileExport profile, List<EventExport> events, String note) {}
+    record LedgerExport(int delta, String kind, String reason, OffsetDateTime createdAt) {}
+    record CreditsExport(int trial, int full, List<LedgerExport> history) {}
+    record Export(String email, String googleAccountId, ProfileExport profile, List<EventExport> events, CreditsExport credits, String note) {}
 
     private final EventRepository events;
     private final ProfileRepository profiles;
     private final SftpGoClient sftpgo;
     private final PhotoStorage storage;
+    private final CreditService credits;
 
-    AccountController(EventRepository events, ProfileRepository profiles, SftpGoClient sftpgo, PhotoStorage storage) {
+    AccountController(EventRepository events, ProfileRepository profiles, SftpGoClient sftpgo, PhotoStorage storage, CreditService credits) {
+        this.credits = credits;
         this.events = events;
         this.profiles = profiles;
         this.sftpgo = sftpgo;
@@ -58,7 +63,9 @@ class AccountController {
             String visibility = !e.listed() ? "private" : e.accessPasswordEnc() != null ? "protected" : "public";
             list.add(new EventExport(e.name(), e.slug(), e.eventDate(), e.icon(), visibility, e.createdAt(), cams));
         }
-        return new Export(jwt.getClaimAsString("email"), sub, pe, list,
+        var balance = credits.balance(sub);
+        var ledger = credits.history(sub).stream().map(r -> new LedgerExport(r.delta(), r.kind(), r.reason(), r.createdAt())).toList();
+        return new Export(jwt.getClaimAsString("email"), sub, pe, list, new CreditsExport(balance.trial(), balance.full(), ledger),
                 "Photos themselves are not included here; open each event on your page to download them.");
     }
 
@@ -86,6 +93,7 @@ class AccountController {
             if (profile.isPresent() && profile.get().avatarKey() != null) storage.delete(profile.get().avatarKey());
             if (profile.isPresent() && profile.get().logoKey() != null) storage.delete(profile.get().logoKey());
             profiles.deleteAll(sub);
+            credits.deleteNonFinancial(sub); // purchases and refunds are kept as financial records
         } catch (RestClientException | IllegalStateException ex) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Could not delete everything. Nothing is lost: try again in a moment.");
         }

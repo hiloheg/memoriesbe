@@ -48,6 +48,7 @@ class MemoriesbeApplicationTests {
 	void creditsDefaults() {
 		spendsAs(ro.ghil.memoriesbe.credits.Plan.FULL);
 		when(credits.unlocked(org.mockito.ArgumentMatchers.any())).thenReturn(true);
+		when(credits.balance(org.mockito.ArgumentMatchers.any())).thenReturn(new ro.ghil.memoriesbe.credits.CreditRepository.Balance(0, 0));
 	}
 
 	@Test
@@ -704,6 +705,22 @@ class MemoriesbeApplicationTests {
 		org.mockito.Mockito.verify(repo).deleteEvent(id);
 		org.mockito.Mockito.verify(profiles).deleteAll("s1");
 		mvc.perform(get("/api/v1/me/export")).andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	void exportListsCreditsAndErasingKeepsThePaymentRecords() throws Exception {
+		when(credits.balance("s1")).thenReturn(new ro.ghil.memoriesbe.credits.CreditRepository.Balance(0, 4));
+		when(credits.history("s1")).thenReturn(List.of(
+				new ro.ghil.memoriesbe.credits.CreditRepository.LedgerRow(5, "full", "purchase", null),
+				new ro.ghil.memoriesbe.credits.CreditRepository.LedgerRow(-1, "full", "event", null)));
+		mvc.perform(get("/api/v1/me/export").with(jwt().jwt(j -> j.subject("s1").claim("email", "a@b.c"))))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.credits.trial").value(0))
+				.andExpect(jsonPath("$.credits.full").value(4))
+				.andExpect(jsonPath("$.credits.history[0].reason").value("purchase"));
+		mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete("/api/v1/me")
+				.with(jwt().jwt(j -> j.subject("s1")))).andExpect(status().isNoContent());
+		org.mockito.Mockito.verify(credits).deleteNonFinancial("s1");
 	}
 
 	@Test

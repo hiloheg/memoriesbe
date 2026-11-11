@@ -21,6 +21,12 @@ public class GuestRepository {
         this.jdbc = jdbc;
     }
 
+    /** Forgets every guest of the event and their uploads (names are personal data); the photos themselves are deleted from storage separately. */
+    public void deleteAllFor(UUID eventId) {
+        jdbc.sql("delete from guest_uploads where event_id = ?").param(eventId).update();
+        jdbc.sql("delete from event_guests where event_id = ?").param(eventId).update();
+    }
+
     /** The guest row for this Google account on this event; created on first use, the name is kept up to date. */
     public Guest ensureGuest(UUID eventId, String sub, String name) {
         return jdbc.sql("""

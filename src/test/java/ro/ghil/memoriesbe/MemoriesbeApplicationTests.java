@@ -73,6 +73,14 @@ class MemoriesbeApplicationTests {
 	}
 
 	@Test
+	void signingInGrantsTheWelcomeCredit() throws Exception {
+		when(profiles.ensure("s1", "Ana Pop", "https://g/p.jpg")).thenReturn(profile("ana-pop"));
+		mvc.perform(get("/api/v1/me").with(jwt().jwt(j -> j.subject("s1").claim("name", "Ana Pop").claim("email", "a@b.c").claim("picture", "https://g/p.jpg"))))
+				.andExpect(status().isOk());
+		org.mockito.Mockito.verify(credits).grantWelcome("s1");
+	}
+
+	@Test
 	void profileRejectsReservedAndInvalidAddresses() throws Exception {
 		when(profiles.ensure(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any())).thenReturn(profile("ana-pop"));
 		for (String bad : new String[] {"events", "ab", "-ana", "Ana Pop!", "a--b"}) {

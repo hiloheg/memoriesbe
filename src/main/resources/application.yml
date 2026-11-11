@@ -1,0 +1,51 @@
+spring:
+  servlet:
+    multipart:
+      max-file-size: 3MB
+      max-request-size: 3MB
+  application:
+    name: memoriesbe
+  config:
+    # Local development: load ./.env (git-ignored). Real environment variables win in production.
+    import: "optional:file:.env[.properties]"
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+    hikari:
+      data-source-properties:
+        # Neon's pooler reuses server connections across restarts; server-side prepared statements
+        # then fail with "cached plan must not change result type" after a migration adds a column.
+        prepareThreshold: 0
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # Google ID tokens are validated against Google's published keys.
+          issuer-uri: https://accounts.google.com
+
+server:
+  port: ${SERVER_PORT:8081}
+
+app:
+  google:
+    client-id: ${GOOGLE_CLIENT_ID}
+    # Comma-separated Google emails allowed in. Empty = any Google account (not recommended).
+    allowed-emails: ${ALLOWED_EMAILS:}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  sftpgo:
+    url: ${SFTPGO_URL:http://localhost:8080}
+    admin-user: ${SFTPGO_ADMIN_USER}
+    admin-password: ${SFTPGO_ADMIN_PASSWORD}
+  r2:
+    endpoint: ${R2_ENDPOINT}
+    bucket: ${R2_BUCKET}
+    region: ${R2_REGION:auto}
+    access-key: ${R2_ACCESS_KEY}
+    secret: ${R2_SECRET}
+  ftp:
+    public-host: ${FTP_PUBLIC_HOST:localhost}
+    public-port: ${FTP_PUBLIC_PORT:21}
+    sftp-port: ${SFTP_PUBLIC_PORT:2022}
+  public-base-url: ${PUBLIC_BASE_URL:http://localhost:5173}

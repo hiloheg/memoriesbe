@@ -14,6 +14,9 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class EventRepository {
     public record Event(UUID id, String ownerSub, String name, String slug, LocalDate eventDate, String icon, boolean listed, String publicToken, OffsetDateTime createdAt, String accessPasswordEnc, boolean guestUploadsEnabled, int guestUploadLimit) {}
+    /** What the event got from its credit: plan key ("trial" or "full"), limits and when it closes and its images are deleted. */
+    public record Limits(UUID eventId, String plan, int maxPhotos, long maxBytes, OffsetDateTime expiresAt, OffsetDateTime purgeAfter, OffsetDateTime purgedAt) {}
+    private static final String LIMITS = "select id as event_id, plan, max_photos, max_bytes, expires_at, purge_after, purged_at from events";
     public record Camera(UUID id, UUID eventId, String name, String sftpUsername, OffsetDateTime createdAt, String passwordEnc) {}
 
     private final JdbcClient jdbc;
@@ -25,6 +28,31 @@ public class EventRepository {
     public void insertEvent(UUID id, String ownerSub, String name, String slug, LocalDate eventDate, String icon, boolean listed, String publicToken) {
         jdbc.sql("insert into events (id, owner_sub, name, slug, event_date, icon, listed, public_token) values (?, ?, ?, ?, ?, ?, ?, ?)")
                 .params(id, ownerSub, name, slug, eventDate, icon, listed, publicToken).update();
+    }
+
+    public void applyPlan(UUID id, ro.ghil.memoriesbe.credits.Plan plan, OffsetDateTime expiresAt, OffsetDateTime purgeAfter) {
+        jdbc.sql("update events set plan = ?, max_photos = ?, max_bytes = ?, expires_at = ?, purge_after = ? where id = ?")
+                .params(plan.key(), plan.maxPhotos(), plan.maxBytes(), expiresAt, purgeAfter, id).update();
+    }
+
+    public Optional<Limits> limitsOf(UUID eventId) {
+        return jdbc.sql(LIMITS + " where id = ?").param(eventId).query(Limits.class).optional();
+    }
+
+    public Map<UUID, Limits> limitsOfOwner(String ownerSub) {
+        Map<UUID, Limits> out = new HashMap<>();
+        jdbc.sql(LIMITS + " where owner_sub = ?").param(ownerSub).query(Limits.class).list().forEach(l -> out.put(l.eventId(), l));
+        return out;
+    }
+
+    /** Events whose images should be deleted now (oldest first), at most {@code limit}. */
+    public List<UUID> dueForPurge(OffsetDateTime now, int limit) {
+        return jdbc.sql("select id from events where purged_at is null and purge_after is not null and purge_after < ? order by purge_after limit ?")
+                .params(now, limit).query(UUID.class).list();
+    }
+
+    public void markPurged(UUID id) {
+        jdbc.sql("update events set purged_at = now() where id = ?").param(id).update();
     }
 
     public boolean eventSlugTaken(String ownerSub, String slug) {

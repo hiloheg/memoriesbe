@@ -3,6 +3,7 @@ package ro.ghil.memoriesbe.profile;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import ro.ghil.memoriesbe.credits.CreditService;
 import ro.ghil.memoriesbe.profile.ProfileRepository.Link;
 import ro.ghil.memoriesbe.profile.ProfileRepository.Profile;
 import ro.ghil.memoriesbe.storage.PhotoStorage;
@@ -14,7 +15,7 @@ public class ProfileViews {
 
     public record ProfileDto(String email, String name, String slug, String tagline, String bio, String accent,
                              String website, String instagram, String picture, boolean customPicture, String shareUrl,
-                             boolean followGate, List<Link> links, Background background, String logo) {}
+                             boolean followGate, List<Link> links, Background background, String logo, boolean unlocked) {}
 
     /** What the page background looks like: kind, preset key, pattern key and effect key. */
     public record Background(String kind, String value, String pattern, String effect, String frame, String social) {}
@@ -22,8 +23,10 @@ public class ProfileViews {
     private final PhotoStorage storage;
     private final ProfileRepository profiles;
     private final String publicBaseUrl;
+    private final CreditService credits;
 
-    ProfileViews(PhotoStorage storage, ProfileRepository profiles, @Value("${app.public-base-url}") String publicBaseUrl) {
+    ProfileViews(PhotoStorage storage, ProfileRepository profiles, CreditService credits, @Value("${app.public-base-url}") String publicBaseUrl) {
+        this.credits = credits;
         this.storage = storage;
         this.profiles = profiles;
         this.publicBaseUrl = publicBaseUrl.replaceAll("/+$", "");
@@ -32,7 +35,7 @@ public class ProfileViews {
     public ProfileDto dto(Profile p, String email) {
         return new ProfileDto(email, p.name(), p.slug(), nz(p.tagline()), nz(p.bio()), accent(p),
                 nz(p.website()), nz(p.instagram()), pictureUrl(p), p.avatarKey() != null, pageUrl(p.slug()),
-                p.followGate(), profiles.links(p.ownerSub()), background(p), logoUrl(p));
+                p.followGate(), profiles.links(p.ownerSub()), background(p), logoUrl(p), credits.unlocked(p.ownerSub()));
     }
 
     public String pageUrl(String slug) {

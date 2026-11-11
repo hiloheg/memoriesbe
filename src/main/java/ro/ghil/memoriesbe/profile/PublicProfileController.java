@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
+import ro.ghil.memoriesbe.credits.CreditService;
 import ro.ghil.memoriesbe.events.EventRepository;
 
 /** Page behind the photographer address: picture, name, bio, links and events. No login. */
@@ -22,8 +23,10 @@ class PublicProfileController {
     private final ProfileRepository profiles;
     private final EventRepository events;
     private final ProfileViews views;
+    private final CreditService credits;
 
-    PublicProfileController(ProfileRepository profiles, EventRepository events, ProfileViews views) {
+    PublicProfileController(ProfileRepository profiles, EventRepository events, ProfileViews views, CreditService credits) {
+        this.credits = credits;
         this.profiles = profiles;
         this.events = events;
         this.views = views;
@@ -38,9 +41,11 @@ class PublicProfileController {
         var shown = main.isPresent() ? List.of(main.get())
                 : events.eventsOf(p.ownerSub()).stream().filter(EventRepository.Event::listed).toList();
         var items = shown.stream().map(e -> new EventItem(e.name(), e.slug(), e.eventDate(), e.icon(), e.accessPasswordEnc() != null)).toList();
-        return new Page(p.name(), p.slug(), nz(p.tagline()), nz(p.bio()), ProfileViews.accent(p),
+        // A page that has not been unlocked by a purchase shows the plain default look, whatever was saved before.
+        boolean unlocked = credits.unlocked(p.ownerSub());
+        return new Page(p.name(), p.slug(), nz(p.tagline()), nz(p.bio()), unlocked ? ProfileViews.accent(p) : ProfileViews.DEFAULT_ACCENT,
                 nz(p.website()), nz(p.instagram()), views.pictureUrl(p), p.followGate(),
-                profiles.links(p.ownerSub()), ProfileViews.background(p), main.isPresent(), items);
+                profiles.links(p.ownerSub()), unlocked ? ProfileViews.background(p) : new ProfileViews.Background("default", "", "none", "none", "none", ""), main.isPresent(), items);
     }
 
     private static String nz(String s) {

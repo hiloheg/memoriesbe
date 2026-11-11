@@ -11,6 +11,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
+import ro.ghil.memoriesbe.credits.CreditService;
 import ro.ghil.memoriesbe.profile.ProfileRepository.Appearance;
 import ro.ghil.memoriesbe.profile.ProfileRepository.Link;
 import ro.ghil.memoriesbe.profile.ProfileRepository.Profile;
@@ -44,8 +45,10 @@ class ProfileController {
     private final ProfileRepository profiles;
     private final ProfileViews views;
     private final PhotoStorage storage;
+    private final CreditService credits;
 
-    ProfileController(ProfileRepository profiles, ProfileViews views, PhotoStorage storage) {
+    ProfileController(ProfileRepository profiles, ProfileViews views, PhotoStorage storage, CreditService credits) {
+        this.credits = credits;
         this.profiles = profiles;
         this.views = views;
         this.storage = storage;
@@ -79,6 +82,10 @@ class ProfileController {
         }
         List<Link> links = cleanLinks(req.links());
         Appearance look = cleanLook(req);
+        // Until the first purchase the page keeps its default look; saving the look it already has is fine, changing it is not.
+        if (!credits.unlocked(current.ownerSub()) && !(accent.equals(ProfileViews.accent(current)) && look.equals(lookOf(current)))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "locked: Buy any pack to change the look of your page");
+        }
         boolean followGate = req.followGate() == null || req.followGate();
         try {
             profiles.update(current.ownerSub(), name, slug, tagline, bio, accent, website, instagram, followGate, look);
@@ -117,6 +124,7 @@ class ProfileController {
     @PostMapping(path = "/logo", consumes = "multipart/form-data")
     ProfileDto uploadLogo(@AuthenticationPrincipal Jwt jwt, @RequestParam("file") MultipartFile file) throws IOException {
         Profile current = current(jwt);
+        if (!credits.unlocked(current.ownerSub())) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "locked: Buy any pack to add your logo");
         if (file.isEmpty() || file.getSize() > MAX_PICTURE_BYTES) throw bad("Logo must be smaller than 2 MB");
         byte[] bytes = file.getBytes();
         String ext = extensionOf(bytes);
@@ -142,6 +150,10 @@ class ProfileController {
         String email = email(jwt);
         String name = jwt.getClaimAsString("name");
         return profiles.ensure(jwt.getSubject(), name == null || name.isBlank() ? email : name, jwt.getClaimAsString("picture"));
+    }
+
+    private static Appearance lookOf(Profile p) {
+        return new Appearance(p.bgKind(), p.bgValue(), p.bgPattern(), p.bgEffect(), p.frame(), p.socialColor());
     }
 
     private static String email(Jwt jwt) {

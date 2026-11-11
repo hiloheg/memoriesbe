@@ -511,6 +511,88 @@ class MemoriesbeApplicationTests {
 				.andExpect(jsonPath("$.logoUrl").value(""));
 	}
 
+	// ---- free accounts: default look, no logo, no guest editor until the first purchase
+
+	private static ProfileRepository.Profile profileWithLook() {
+		return new ProfileRepository.Profile("s1", "Ana Pop", "ana-pop", null, null, "#2f5bd8", null, null, null, null, "https://g/p.jpg", "tok", true,
+				"gradient", "dawn", "dots", "grain", "neon", "#12161c", null);
+	}
+
+	private org.springframework.test.web.servlet.ResultActions putProfileLook(String lookJson) throws Exception {
+		when(profiles.ensure(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any())).thenReturn(profile("ana-pop"));
+		when(profiles.bySub("s1")).thenReturn(Optional.of(profile("ana-pop")));
+		return mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/v1/profile")
+				.with(jwt().jwt(j -> j.subject("s1").claim("email", "a@b.c"))).contentType("application/json")
+				.content("{\"name\":\"Ana\",\"slug\":\"ana-pop\",\"accent\":\"#0e7c6b\"" + lookJson + "}"));
+	}
+
+	@Test
+	void freeAccountCannotSaveALook() throws Exception {
+		when(credits.unlocked("s1")).thenReturn(false);
+		putProfileLook(",\"bgKind\":\"gradient\",\"bgValue\":\"dawn\"").andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.startsWith("locked:")));
+		putProfileLook(",\"accent\":\"#be185d\"").andExpect(status().isForbidden());
+		putProfileLook("").andExpect(status().isOk()); // name, address and the unchanged default look still save
+	}
+
+	@Test
+	void unlockedAccountCanSaveALook() throws Exception {
+		putProfileLook(",\"bgKind\":\"gradient\",\"bgValue\":\"dawn\"").andExpect(status().isOk());
+	}
+
+	@Test
+	void freeAccountCannotUploadALogoButCanRemoveOne() throws Exception {
+		when(credits.unlocked("s1")).thenReturn(false);
+		uploadLogo(png(100, 40, 200)).andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.startsWith("locked:")));
+		org.mockito.Mockito.verify(storage, org.mockito.Mockito.never()).put(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any(byte[].class), org.mockito.ArgumentMatchers.anyString());
+		mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete("/api/v1/profile/logo")
+				.with(jwt().jwt(j -> j.subject("s1").claim("email", "a@b.c")))).andExpect(status().isOk());
+	}
+
+	@Test
+	void publicProfileShowsTheDefaultLookToGuestsOfAFreeOwner() throws Exception {
+		when(profiles.bySlug("ana-pop")).thenReturn(Optional.of(profileWithLook()));
+		when(credits.unlocked("s1")).thenReturn(false);
+		mvc.perform(get("/api/v1/public/photographers/ana-pop")).andExpect(status().isOk())
+				.andExpect(jsonPath("$.background.kind").value("default")).andExpect(jsonPath("$.background.frame").value("none"))
+				.andExpect(jsonPath("$.accent").value("#0e7c6b"));
+		when(credits.unlocked("s1")).thenReturn(true);
+		mvc.perform(get("/api/v1/public/photographers/ana-pop")).andExpect(status().isOk())
+				.andExpect(jsonPath("$.background.kind").value("gradient")).andExpect(jsonPath("$.background.frame").value("neon"))
+				.andExpect(jsonPath("$.accent").value("#2f5bd8"));
+	}
+
+	@Test
+	void publicGalleryHidesLogoAndEditorForAFreeOwner() throws Exception {
+		logoEvent();
+		when(profiles.bySub("owner")).thenReturn(Optional.of(profileWithLogo("profiles/tok/logo/a.png")));
+		when(storage.signedUrl("profiles/tok/logo/a.png")).thenReturn("https://signed/logo");
+		when(credits.unlocked("owner")).thenReturn(false);
+		for (String url : new String[] {"/api/v1/public/photographers/ana-pop/events/wedding/photos", "/api/v1/public/events/tok"}) {
+			mvc.perform(get(url)).andExpect(status().isOk())
+					.andExpect(jsonPath("$.logoUrl").value(""))
+					.andExpect(jsonPath("$.features.editor").value(false))
+					.andExpect(jsonPath("$.features.logo").value(false))
+					.andExpect(jsonPath("$.features.personalized").value(false));
+		}
+		when(credits.unlocked("owner")).thenReturn(true);
+		mvc.perform(get("/api/v1/public/events/tok")).andExpect(status().isOk())
+				.andExpect(jsonPath("$.logoUrl").value("https://signed/logo"))
+				.andExpect(jsonPath("$.features.editor").value(true))
+				.andExpect(jsonPath("$.features.logo").value(true))
+				.andExpect(jsonPath("$.features.personalized").value(true));
+	}
+
+	@Test
+	void meReportsWhetherTheAccountIsUnlocked() throws Exception {
+		when(profiles.ensure("s1", "Ana Pop", "https://g/p.jpg")).thenReturn(profile("ana-pop"));
+		var me = get("/api/v1/me").with(jwt().jwt(j -> j.subject("s1").claim("name", "Ana Pop").claim("email", "a@b.c").claim("picture", "https://g/p.jpg")));
+		mvc.perform(me).andExpect(jsonPath("$.unlocked").value(true));
+		when(credits.unlocked("s1")).thenReturn(false);
+		mvc.perform(me).andExpect(jsonPath("$.unlocked").value(false));
+	}
+
 	@Test
 	void tokenGalleryIncludesLogoUrl() throws Exception {
 		logoEvent();

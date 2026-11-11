@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
+import ro.ghil.memoriesbe.credits.CreditService;
 import ro.ghil.memoriesbe.events.EventRepository.Event;
 import ro.ghil.memoriesbe.profile.ProfileRepository;
 import ro.ghil.memoriesbe.profile.ProfileViews;
@@ -29,13 +30,15 @@ class PublicEventController {
     /** `url` is the original; `thumb` (grid) and `view` (full screen) are small copies, relative to the API address, or null when we cannot make links. */
     record GalleryPhoto(String name, String url, String thumb, String view) {}
     /** `guestLimit` is how many photos each guest may add; 0 when guest uploads are off. */
-    record Gallery(String name, int guestLimit, List<Folder> folders, String logoUrl) {}
+    record Gallery(String name, int guestLimit, List<Folder> folders, String logoUrl, Features features) {}
+    /** What the owner has unlocked: their page look, the logo on downloads, and the photo editor for guests. All come with the first purchase. */
+    record Features(boolean personalized, boolean editor, boolean logo) {}
     /** `camera` is the tag label (camera or guest name); `byId` is the camera or guest id used for filtering. */
     record StreamPhoto(String name, String url, String camera, String byId, String kind, String thumb, String view) {}
     /** Something photos can be filtered by: one camera or one guest. */
     record Tag(String id, String label, String kind, int count) {}
     /** One page of an event's photos from all cameras and guests, newest upload first. `next` is the offset to ask for next, or null at the end. `total` counts the filtered photos, `tags` always cover the whole event. */
-    record PhotoPage(String name, LocalDate eventDate, int total, List<StreamPhoto> photos, Integer next, List<Tag> tags, int guestLimit, String logoUrl) {}
+    record PhotoPage(String name, LocalDate eventDate, int total, List<StreamPhoto> photos, Integer next, List<Tag> tags, int guestLimit, String logoUrl, Features features) {}
     private record Source(UUID id, String label, String kind, String prefix) {}
     private record Tagged(PhotoStorage.Entry entry, Source source) {}
 
@@ -51,9 +54,11 @@ class PublicEventController {
     private final ThumbLinks thumbs;
 
     private final EventLifetime lifetime;
+    private final CreditService credits;
 
     PublicEventController(EventRepository repo, PhotoStorage storage, EventAccess access, GuestRepository guests,
-                          ProfileRepository profiles, ProfileViews views, ThumbLinks thumbs, EventLifetime lifetime) {
+                          ProfileRepository profiles, ProfileViews views, ThumbLinks thumbs, EventLifetime lifetime, CreditService credits) {
+        this.credits = credits;
         this.lifetime = lifetime;
         this.thumbs = thumbs;
         this.profiles = profiles;
@@ -97,7 +102,7 @@ class PublicEventController {
                 .map(t -> new StreamPhoto(t.entry().name(), storage.signedUrl(t.entry().key()), t.source().label(), t.source().id().toString(), t.source().kind(),
                         thumbs.url(t.entry().key(), t.entry().modified().getEpochSecond(), 480), thumbs.url(t.entry().key(), t.entry().modified().getEpochSecond(), 1600)))
                 .toList();
-        return new PhotoPage(event.name(), event.eventDate(), all.size(), page, to < all.size() ? to : null, tags, guestLimit(event), logoUrl(event));
+        return new PhotoPage(event.name(), event.eventDate(), all.size(), page, to < all.size() ? to : null, tags, guestLimit(event), logoUrl(event), features(event));
     }
 
     /** Cameras first, then the guests who still have photos here. */
@@ -123,11 +128,17 @@ class PublicEventController {
         List<Folder> folders = sources(event).stream()
                 .map(src -> new Folder(src.id(), src.label(), src.kind(), storage.list(src.prefix()).stream().map(this::galleryPhoto).toList()))
                 .toList();
-        return new Gallery(event.name(), guestLimit(event), folders, logoUrl(event));
+        return new Gallery(event.name(), guestLimit(event), folders, logoUrl(event), features(event));
+    }
+
+    private Features features(Event event) {
+        boolean unlocked = credits.unlocked(event.ownerSub());
+        return new Features(unlocked, unlocked, unlocked);
     }
 
     /** The owner's logo link, or empty when they have no logo or no profile. */
     private String logoUrl(Event event) {
+        if (!credits.unlocked(event.ownerSub())) return "";
         return profiles.bySub(event.ownerSub()).map(views::logoUrl).orElse("");
     }
 

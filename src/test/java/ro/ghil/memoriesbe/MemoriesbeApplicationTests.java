@@ -33,8 +33,22 @@ class MemoriesbeApplicationTests {
 	@MockitoBean PhotoStorage storage;
 	@MockitoBean ro.ghil.memoriesbe.events.GuestRepository guestRepo;
 	@MockitoBean ro.ghil.memoriesbe.events.GuestUploadService guestUploads;
+	@MockitoBean ro.ghil.memoriesbe.credits.CreditService credits;
 	@Autowired ro.ghil.memoriesbe.sftpgo.SecretBox box;
 	@Autowired ro.ghil.memoriesbe.storage.ThumbLinks thumbLinks;
+
+	/** Spending a credit runs the event creation with the given plan (a full event unless a test says otherwise). */
+	@SuppressWarnings("unchecked")
+	private void spendsAs(ro.ghil.memoriesbe.credits.Plan plan) {
+		org.mockito.Mockito.doAnswer(inv -> ((java.util.function.Function<ro.ghil.memoriesbe.credits.Plan, Object>) inv.getArgument(2)).apply(plan))
+				.when(credits).runSpending(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+	}
+
+	@org.junit.jupiter.api.BeforeEach
+	void creditsDefaults() {
+		spendsAs(ro.ghil.memoriesbe.credits.Plan.FULL);
+		when(credits.unlocked(org.mockito.ArgumentMatchers.any())).thenReturn(true);
+	}
 
 	@Test
 	void rejectsAnonymous() throws Exception {
@@ -150,9 +164,68 @@ class MemoriesbeApplicationTests {
 		post("/api/v1/events", "{\"name\":\"Nunta\",\"date\":\"2026-12-20\",\"icon\":\"skull\"}").andExpect(status().isBadRequest());
 		when(repo.eventOf(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("s1")))
 				.thenReturn(Optional.of(event(UUID.randomUUID(), java.time.LocalDate.of(2026, 12, 20))));
-		post("/api/v1/events", "{\"name\":\"Nunta\",\"date\":\"2026-12-20\",\"icon\":\"wedding\"}").andExpect(status().isCreated());
+		post("/api/v1/events", "{\"name\":\"Nunta\",\"date\":\"2026-12-20\",\"icon\":\"wedding\",\"confirmed\":true}").andExpect(status().isCreated());
 		org.mockito.Mockito.verify(repo).insertEvent(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("s1"), org.mockito.ArgumentMatchers.eq("Nunta"),
 				org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("wedding"), org.mockito.ArgumentMatchers.eq(true), org.mockito.ArgumentMatchers.anyString());
+	}
+
+	private static final String NEW_EVENT = "{\"name\":\"Nunta\",\"date\":\"2026-12-20\",\"icon\":\"wedding\"";
+
+	@Test
+	void creatingAnEventNeedsConfirmation() throws Exception {
+		post("/api/v1/events", NEW_EVENT + "}").andExpect(status().isBadRequest());
+		post("/api/v1/events", NEW_EVENT + ",\"confirmed\":false}").andExpect(status().isBadRequest());
+		org.mockito.Mockito.verify(credits, org.mockito.Mockito.never()).runSpending(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+		org.mockito.Mockito.verify(repo, org.mockito.Mockito.never()).insertEvent(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+				org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyBoolean(), org.mockito.ArgumentMatchers.any());
+	}
+
+	private void createdEventHas(ro.ghil.memoriesbe.credits.Plan plan, int days) throws Exception {
+		spendsAs(plan);
+		when(repo.eventOf(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("s1")))
+				.thenReturn(Optional.of(event(UUID.randomUUID(), java.time.LocalDate.of(2026, 12, 20))));
+		var before = java.time.OffsetDateTime.now();
+		post("/api/v1/events", NEW_EVENT + ",\"confirmed\":true}").andExpect(status().isCreated());
+		var expires = org.mockito.ArgumentCaptor.forClass(java.time.OffsetDateTime.class);
+		var purge = org.mockito.ArgumentCaptor.forClass(java.time.OffsetDateTime.class);
+		org.mockito.Mockito.verify(repo).applyPlan(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq(plan), expires.capture(), purge.capture());
+		org.junit.jupiter.api.Assertions.assertTrue(!expires.getValue().isBefore(before.plusDays(days)) && expires.getValue().isBefore(before.plusDays(days).plusMinutes(1)),
+				"online for " + days + " days from now, was " + expires.getValue());
+		org.junit.jupiter.api.Assertions.assertEquals(expires.getValue().plusDays(14), purge.getValue(), "images go 14 days after it closes");
+	}
+
+	@Test
+	void creatingAnEventSpendsOneCreditAndStoresTheFullPlan() throws Exception {
+		createdEventHas(ro.ghil.memoriesbe.credits.Plan.FULL, 90);
+		org.mockito.Mockito.verify(credits).runSpending(org.mockito.ArgumentMatchers.eq("s1"), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+	}
+
+	@Test
+	void trialEventGetsTrialLimits() throws Exception {
+		createdEventHas(ro.ghil.memoriesbe.credits.Plan.TRIAL, 30);
+	}
+
+	@Test
+	void noCreditsGives402AndCreatesNothing() throws Exception {
+		org.mockito.Mockito.doThrow(new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.PAYMENT_REQUIRED, "You have no credits left."))
+				.when(credits).runSpending(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+		post("/api/v1/events", NEW_EVENT + ",\"confirmed\":true}").andExpect(status().isPaymentRequired());
+		org.mockito.Mockito.verify(repo, org.mockito.Mockito.never()).insertEvent(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+				org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyBoolean(), org.mockito.ArgumentMatchers.any());
+	}
+
+	@Test
+	void eventListShowsPlanAndExpiry() throws Exception {
+		UUID id = UUID.randomUUID();
+		when(repo.eventsOf("s1")).thenReturn(List.of(event(id, java.time.LocalDate.of(2026, 1, 1))));
+		var past = java.time.OffsetDateTime.now().minusDays(1);
+		when(repo.limitsOfOwner("s1")).thenReturn(java.util.Map.of(id, new EventRepository.Limits(id, "full", 3000, 42949672960L, past, past.plusDays(14), null)));
+		mvc.perform(get("/api/v1/events").with(jwt().jwt(j -> j.subject("s1"))))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[0].plan").value("full"))
+				.andExpect(jsonPath("$[0].maxPhotos").value(3000))
+				.andExpect(jsonPath("$[0].maxCameras").value(Integer.MAX_VALUE))
+				.andExpect(jsonPath("$[0].expired").value(true));
 	}
 
 	@Test

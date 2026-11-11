@@ -19,7 +19,10 @@ import org.springframework.web.client.RestClientException;
 import org.springframework.web.server.ResponseStatusException;
 import ro.ghil.memoriesbe.config.Props;
 import ro.ghil.memoriesbe.events.EventRepository.Camera;
+import ro.ghil.memoriesbe.credits.CreditService;
+import ro.ghil.memoriesbe.credits.Plan;
 import ro.ghil.memoriesbe.events.EventRepository.Event;
+import ro.ghil.memoriesbe.events.EventRepository.Limits;
 import ro.ghil.memoriesbe.profile.ProfileRepository;
 import ro.ghil.memoriesbe.profile.Slugs;
 import ro.ghil.memoriesbe.sftpgo.CredentialGenerator;
@@ -32,14 +35,16 @@ import ro.ghil.memoriesbe.storage.PhotoStorage;
 @RequestMapping("/api/v1/events")
 class EventController {
     record CreateRequest(String name) {}
-    record CreateEventRequest(String name, LocalDate date, String icon, String visibility, String password) {}
+    /** `confirmed` must be true: the person has seen that the event uses one credit and when it closes. */
+    record CreateEventRequest(String name, LocalDate date, String icon, String visibility, String password, Boolean confirmed) {}
     record VisibilityRequest(String visibility, String password) {}
     record IconRequest(String icon) {}
     record GuestUploadsRequest(boolean enabled, int limit) {}
     record DetailsRequest(String name, String icon) {}
     record EventDto(UUID id, String name, String slug, String shareUrl, LocalDate eventDate, String icon, String visibility, String accessPassword, boolean main,
                     OffsetDateTime createdAt, int cameraCount, Instant cameraAccessEndsAt, boolean cameraAccessExpired,
-                    boolean guestUploadsEnabled, int guestUploadLimit) {}
+                    boolean guestUploadsEnabled, int guestUploadLimit,
+                    String plan, int maxPhotos, int maxCameras, OffsetDateTime expiresAt, boolean expired, OffsetDateTime purgedAt) {}
     record CameraDto(UUID id, String name, String username, OffsetDateTime createdAt) {}
     record EventDetail(EventDto event, List<CameraDto> cameras) {}
     record CameraCredentials(UUID id, String name, String username, String password,
@@ -52,8 +57,11 @@ class EventController {
             "concert", "conference", "graduation", "sports", "corporate", "travel");
     /** Most photos one guest may add to one event. */
     static final int MAX_GUEST_PHOTOS = 50;
+    /** Days the images stay after an event closes, so the photographer can still download them. */
+    static final int PURGE_GRACE_DAYS = 14;
     private static final SecureRandom RANDOM = new SecureRandom();
 
+    private final CreditService credits;
     private final EventRepository repo;
     private final SftpGoClient sftpgo;
     private final PhotoStorage storage;
@@ -64,8 +72,9 @@ class EventController {
     private final Props.Ftp ftp;
     private final String publicBaseUrl;
 
-    EventController(EventRepository repo, SftpGoClient sftpgo, PhotoStorage storage, ProfileRepository profiles, CredentialGenerator credentials, SecretBox secrets, EventAccess access, Props.Ftp ftp,
+    EventController(CreditService credits, EventRepository repo, SftpGoClient sftpgo, PhotoStorage storage, ProfileRepository profiles, CredentialGenerator credentials, SecretBox secrets, EventAccess access, Props.Ftp ftp,
                     @Value("${app.public-base-url}") String publicBaseUrl) {
+        this.credits = credits;
         this.repo = repo;
         this.sftpgo = sftpgo;
         this.storage = storage;
@@ -93,16 +102,28 @@ class EventController {
         String visibility = req.visibility() == null || req.visibility().isBlank() ? "public" : req.visibility();
         boolean listed = parseVisibility(visibility);
         String passwordEnc = passwordFor(visibility, req.password());
-        repo.insertEvent(id, jwt.getSubject(), name, uniqueSlug(jwt.getSubject(), name), date, icon, listed, token);
-        if (passwordEnc != null) repo.setAccessPassword(id, passwordEnc);
-        return dto(repo.eventOf(id, jwt.getSubject()).orElseThrow(), 0, mainEventId(jwt.getSubject()));
+        if (!Boolean.TRUE.equals(req.confirmed())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Confirm that creating this event uses 1 credit");
+        }
+        String owner = jwt.getSubject();
+        // The credit is spent and the event stored in one transaction: if anything fails the credit comes back.
+        return credits.runSpending(owner, id, plan -> {
+            OffsetDateTime expires = OffsetDateTime.now().plusDays(plan.days());
+            OffsetDateTime purgeAfter = expires.plusDays(PURGE_GRACE_DAYS);
+            repo.insertEvent(id, owner, name, uniqueSlug(owner, name), date, icon, listed, token);
+            if (passwordEnc != null) repo.setAccessPassword(id, passwordEnc);
+            repo.applyPlan(id, plan, expires, purgeAfter);
+            var limits = new Limits(id, plan.key(), plan.maxPhotos(), plan.maxBytes(), expires, purgeAfter, null);
+            return dto(repo.eventOf(id, owner).orElseThrow(), 0, mainEventId(owner), limits);
+        });
     }
 
     @GetMapping
     List<EventDto> list(@AuthenticationPrincipal Jwt jwt) {
         var counts = repo.cameraCounts(jwt.getSubject());
+        var limits = repo.limitsOfOwner(jwt.getSubject());
         UUID mainId = mainEventId(jwt.getSubject());
-        return repo.eventsOf(jwt.getSubject()).stream().map(e -> dto(e, counts.getOrDefault(e.id(), 0), mainId)).toList();
+        return repo.eventsOf(jwt.getSubject()).stream().map(e -> dto(e, counts.getOrDefault(e.id(), 0), mainId, limits.get(e.id()))).toList();
     }
 
     @GetMapping("/{id}")
@@ -324,10 +345,19 @@ class EventController {
     }
 
     private EventDto dto(Event e, int cameraCount, UUID mainId) {
+        return dto(e, cameraCount, mainId, repo.limitsOf(e.id()).orElse(null));
+    }
+
+    /** `limits` is null for an event without a plan (it is then shown as open, with no limits). */
+    private EventDto dto(Event e, int cameraCount, UUID mainId, Limits limits) {
         Instant ends = accessEnds(e.eventDate());
+        Plan plan = limits == null ? null : Plan.of(limits.plan());
+        boolean expired = limits != null && (limits.purgedAt() != null || limits.expiresAt().isBefore(OffsetDateTime.now()));
         return new EventDto(e.id(), e.name(), e.slug(), shareUrl(e), e.eventDate(), e.icon(),
                 !e.listed() ? "private" : EventAccess.isProtected(e) ? "protected" : "public", access.passwordOf(e), e.id().equals(mainId), e.createdAt(), cameraCount,
-                ends, !Instant.now().isBefore(ends), e.guestUploadsEnabled(), e.guestUploadLimit());
+                ends, !Instant.now().isBefore(ends), e.guestUploadsEnabled(), e.guestUploadLimit(),
+                limits == null ? null : limits.plan(), limits == null ? 0 : limits.maxPhotos(), plan == null ? Integer.MAX_VALUE : plan.maxCameras(),
+                limits == null ? null : limits.expiresAt(), expired, limits == null ? null : limits.purgedAt());
     }
 
     private static String requireIcon(String icon) {

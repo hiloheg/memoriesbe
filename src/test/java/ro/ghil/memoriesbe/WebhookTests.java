@@ -184,6 +184,15 @@ class WebhookTests {
 	}
 
 	@Test
+	void refundStillTakesCreditsBackWhenTheProfileWasDeleted() throws Exception {
+		// The purchase row is kept after the account is deleted, so its refund must be kept too.
+		when(profiles.bySub("s1")).thenReturn(Optional.empty());
+		when(creditRepo.ownerOfRef("ls-order:9001")).thenReturn("s1");
+		signed("order_refunded", order("order_refunded", "9001", "refunded", 42, 55, false, null)).andExpect(status().isOk());
+		verify(credits).applyRefund("s1", 5, "9001");
+	}
+
+	@Test
 	void otherEventsAreAcceptedAndIgnored() throws Exception {
 		signed("subscription_created", "{\"meta\":{\"event_name\":\"subscription_created\"},\"data\":{\"id\":\"5\"}}").andExpect(status().isOk());
 		verify(creditRepo).insertPaymentEvent(eq("5"), eq("subscription_created"), eq("ignored"), anyString());

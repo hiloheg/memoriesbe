@@ -75,11 +75,6 @@ public class CreditService {
         return repo.insert(sub, -credits, "full", "refund", "ls-refund:" + orderId, null);
     }
 
-    /** Account erasure: free credits and spends go, purchase and refund rows stay as financial records. */
-    public void deleteNonFinancial(String sub) {
-        repo.deleteNonFinancial(sub);
-    }
-
     public List<LedgerRow> history(String sub) {
         return repo.history(sub, 50);
     }

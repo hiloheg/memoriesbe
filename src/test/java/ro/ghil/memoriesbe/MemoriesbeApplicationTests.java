@@ -709,7 +709,7 @@ class MemoriesbeApplicationTests {
 	}
 
 	@Test
-	void exportListsCreditsAndErasingKeepsThePaymentRecords() throws Exception {
+	void exportListsCreditsAndErasingTheAccountKeepsTheWholeCreditLedger() throws Exception {
 		when(credits.balance("s1")).thenReturn(new ro.ghil.memoriesbe.credits.CreditRepository.Balance(0, 4));
 		when(credits.history("s1")).thenReturn(List.of(
 				new ro.ghil.memoriesbe.credits.CreditRepository.LedgerRow(5, "full", "purchase", null),
@@ -721,7 +721,8 @@ class MemoriesbeApplicationTests {
 				.andExpect(jsonPath("$.credits.history[0].reason").value("purchase"));
 		mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete("/api/v1/me")
 				.with(jwt().jwt(j -> j.subject("s1")))).andExpect(status().isNoContent());
-		org.mockito.Mockito.verify(credits).deleteNonFinancial("s1");
+		// The ledger holds only the account id and amounts. Deleting rows would hand back spent credits and the free credit on the next sign-in.
+		org.mockito.Mockito.verify(credits, org.mockito.Mockito.never()).grantWelcome("s1");
 	}
 
 	@Test

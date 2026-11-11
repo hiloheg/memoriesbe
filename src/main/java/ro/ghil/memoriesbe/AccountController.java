@@ -93,7 +93,7 @@ class AccountController {
             if (profile.isPresent() && profile.get().avatarKey() != null) storage.delete(profile.get().avatarKey());
             if (profile.isPresent() && profile.get().logoKey() != null) storage.delete(profile.get().logoKey());
             profiles.deleteAll(sub);
-            credits.deleteNonFinancial(sub); // purchases and refunds are kept as financial records
+            // The credit ledger is kept as it is: it holds only the account id and amounts, and removing rows would hand back spent credits and the free credit.
         } catch (RestClientException | IllegalStateException ex) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Could not delete everything. Nothing is lost: try again in a moment.");
         }

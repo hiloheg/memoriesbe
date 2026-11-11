@@ -76,7 +76,9 @@ class LemonSqueezyWebhookController {
             String found = ledger.ownerOfRef("ls-order:" + orderId); // a refund event may not carry our custom data
             sub = found == null ? "" : found;
         }
-        if (sub.isEmpty() || profiles.bySub(sub).isEmpty()) return "unknown_account";
+        if (sub.isEmpty()) return "unknown_account";
+        // A purchase needs a live account; a refund must be applied even after the account was deleted, because its purchase row is kept.
+        if (purchase && profiles.bySub(sub).isEmpty()) return "unknown_account";
         if (purchase) return credits.applyPurchase(sub, count, orderId) ? "credited" : "duplicate";
         return credits.applyRefund(sub, count, orderId) ? "refunded" : "duplicate";
     }

@@ -79,9 +79,4 @@ public class CreditRepository {
         jdbc.sql("insert into payment_events (order_id, event_name, outcome, payload) values (?, ?, ?, ?::jsonb)")
                 .params(orderId, eventName, outcome, payloadJson).update();
     }
-
-    /** Account deletion: free credits and spends go; purchases and refunds stay as financial records. */
-    public void deleteNonFinancial(String ownerSub) {
-        jdbc.sql("delete from credit_ledger where owner_sub = ? and reason in ('welcome', 'event')").param(ownerSub).update();
-    }
 }

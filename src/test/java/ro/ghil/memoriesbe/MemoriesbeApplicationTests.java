@@ -290,7 +290,8 @@ class MemoriesbeApplicationTests {
 				.andExpect(jsonPath("$[0].plan").value("full"))
 				.andExpect(jsonPath("$[0].maxPhotos").value(3000))
 				.andExpect(jsonPath("$[0].maxCameras").value(Integer.MAX_VALUE))
-				.andExpect(jsonPath("$[0].expired").value(true));
+				.andExpect(jsonPath("$[0].expired").value(true))
+				.andExpect(jsonPath("$[0].purgeAfter").exists());
 	}
 
 	@Test

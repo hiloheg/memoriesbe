@@ -44,7 +44,7 @@ class EventController {
     record EventDto(UUID id, String name, String slug, String shareUrl, LocalDate eventDate, String icon, String visibility, String accessPassword, boolean main,
                     OffsetDateTime createdAt, int cameraCount, Instant cameraAccessEndsAt, boolean cameraAccessExpired,
                     boolean guestUploadsEnabled, int guestUploadLimit,
-                    String plan, int maxPhotos, int maxCameras, OffsetDateTime expiresAt, boolean expired, OffsetDateTime purgedAt) {}
+                    String plan, int maxPhotos, int maxCameras, OffsetDateTime expiresAt, OffsetDateTime purgeAfter, boolean expired, OffsetDateTime purgedAt) {}
     record CameraDto(UUID id, String name, String username, OffsetDateTime createdAt) {}
     record EventDetail(EventDto event, List<CameraDto> cameras) {}
     record CameraCredentials(UUID id, String name, String username, String password,
@@ -369,7 +369,7 @@ class EventController {
                 !e.listed() ? "private" : EventAccess.isProtected(e) ? "protected" : "public", access.passwordOf(e), e.id().equals(mainId), e.createdAt(), cameraCount,
                 ends, !Instant.now().isBefore(ends), e.guestUploadsEnabled(), e.guestUploadLimit(),
                 limits == null ? null : limits.plan(), limits == null ? 0 : limits.maxPhotos(), plan == null ? Integer.MAX_VALUE : plan.maxCameras(),
-                limits == null ? null : limits.expiresAt(), expired, limits == null ? null : limits.purgedAt());
+                limits == null ? null : limits.expiresAt(), limits == null ? null : limits.purgeAfter(), expired, limits == null ? null : limits.purgedAt());
     }
 
     private static String requireIcon(String icon) {

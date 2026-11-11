@@ -40,6 +40,7 @@ class SecurityConfig {
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(a -> a
                 .requestMatchers("/api/v1/public/**").permitAll()
+                .requestMatchers("/api/v1/webhooks/**").permitAll() // Lemon Squeezy calls this; the signature is the permission
                 .anyRequest().authenticated())
             .oauth2ResourceServer(o -> o.authenticationManagerResolver(
                     (HttpServletRequest req) -> GoogleTokens.isGuestPath(req.getRequestURI()) ? guests : photographers));

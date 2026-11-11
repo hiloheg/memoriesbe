@@ -51,4 +51,15 @@ app:
   thumbs:
     # 32+ random characters; signs the links to the small photo copies. Empty = a random key per start (links break on restart).
     secret: ${THUMB_SECRET:}
+  lemonsqueezy:
+    # Settings > Webhooks signing secret (6-40 characters). Empty = every webhook is refused.
+    webhook-secret: ${LEMONSQUEEZY_WEBHOOK_SECRET:}
+    store-id: ${LEMONSQUEEZY_STORE_ID:}
+    store-slug: ${LEMONSQUEEZY_STORE_SLUG:}
+    # Variant ids of the packs of 1, 5 and 10 credits.
+    variant1: ${LEMONSQUEEZY_VARIANT_1:}
+    variant5: ${LEMONSQUEEZY_VARIANT_5:}
+    variant10: ${LEMONSQUEEZY_VARIANT_10:}
+    # true only while testing: lets orders made in Lemon Squeezy test mode add credits.
+    allow-test: ${LEMONSQUEEZY_ALLOW_TEST:false}
   public-base-url: ${PUBLIC_BASE_URL:http://localhost:5173}

@@ -15,7 +15,7 @@ import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
 /** Registers the typed settings and the S3 clients pointed at Cloudflare R2. */
 @Configuration
-@EnableConfigurationProperties({Props.SftpGo.class, Props.R2.class, Props.Ftp.class})
+@EnableConfigurationProperties({Props.SftpGo.class, Props.R2.class, Props.Ftp.class, Props.LemonSqueezy.class})
 class AppConfig {
 
     private static StaticCredentialsProvider creds(Props.R2 r2) {

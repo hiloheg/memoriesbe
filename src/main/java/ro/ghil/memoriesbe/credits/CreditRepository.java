@@ -59,6 +59,11 @@ public class CreditRepository {
                 .param(ownerSub).query(Boolean.class).single();
     }
 
+    /** The account a ledger row (found by its ref, for example {@code ls-order:123}) belongs to, or null. */
+    public String ownerOfRef(String ref) {
+        return jdbc.sql("select owner_sub from credit_ledger where ref = ?").param(ref).query(String.class).optional().orElse(null);
+    }
+
     /** When credits were switched on; every account counts as unlocked for 30 days after this. */
     public Instant launchedAt() {
         return jdbc.sql("select launched_at from credit_launch limit 1")

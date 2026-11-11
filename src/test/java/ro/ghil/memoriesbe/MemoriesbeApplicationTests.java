@@ -148,7 +148,8 @@ class MemoriesbeApplicationTests {
 		// end of the 3rd day after the event = start of day 4, UTC
 		java.time.Instant expected = today.plusDays(4).atStartOfDay(java.time.ZoneOffset.UTC).toInstant();
 		org.mockito.Mockito.verify(sftpgo).createUser(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(),
-				org.mockito.ArgumentMatchers.startsWith("events/" + id + "/"), org.mockito.ArgumentMatchers.eq(expected));
+				org.mockito.ArgumentMatchers.startsWith("events/" + id + "/"), org.mockito.ArgumentMatchers.eq(expected),
+				org.mockito.ArgumentMatchers.eq(3000), org.mockito.ArgumentMatchers.eq(42949672960L));
 	}
 
 	@Test
@@ -209,6 +210,10 @@ class MemoriesbeApplicationTests {
 		org.mockito.Mockito.verifyNoInteractions(sftpgo);
 		when(repo.cameras(id)).thenReturn(List.of());
 		post("/api/v1/events/" + id + "/cameras", "{\"name\":\"First\"}").andExpect(status().isCreated());
+		// the camera's quota is the trial event's own limit
+		org.mockito.Mockito.verify(sftpgo).createUser(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(),
+				org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any(java.time.Instant.class),
+				org.mockito.ArgumentMatchers.eq(300), org.mockito.ArgumentMatchers.eq(4L * 1024 * 1024 * 1024));
 	}
 
 	@Test

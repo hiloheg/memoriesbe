@@ -37,6 +37,8 @@ class SftpGoClientTests {
 				.andExpect(header("Authorization", "Bearer tok"))
 				.andExpect(jsonPath("$.username").value("cam_x"))
 				.andExpect(jsonPath("$.expiration_date").value(1_800_000_000_000L))
+				.andExpect(jsonPath("$.quota_files").value(3000))
+				.andExpect(jsonPath("$.quota_size").value(42_949_672_960L))
 				.andExpect(jsonPath("$.filesystem.provider").value(1))
 				.andExpect(jsonPath("$.filesystem.s3config.bucket").value("memories"))
 				.andExpect(jsonPath("$.filesystem.s3config.key_prefix").value("events/e/c/"))
@@ -44,7 +46,7 @@ class SftpGoClientTests {
 				.andExpect(jsonPath("$.permissions['/']").value(org.hamcrest.Matchers.contains("list", "upload", "create_dirs")))
 				.andRespond(withSuccess());
 
-		client.createUser("cam_x", "secret", "events/e/c/", Instant.ofEpochMilli(1_800_000_000_000L));
+		client.createUser("cam_x", "secret", "events/e/c/", Instant.ofEpochMilli(1_800_000_000_000L), 3000, 42_949_672_960L);
 		server.verify();
 	}
 

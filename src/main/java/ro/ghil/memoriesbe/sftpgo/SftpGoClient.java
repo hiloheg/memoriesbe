@@ -29,13 +29,18 @@ public class SftpGoClient {
         this.r2 = r2;
     }
 
-    /** Creates a user that can only list/upload under {@code keyPrefix} of the R2 bucket and cannot log in after {@code expiresAt}. */
-    public void createUser(String username, String password, String keyPrefix, Instant expiresAt) {
+    /**
+     * Creates a user that can only list/upload under {@code keyPrefix} of the R2 bucket and cannot log in after {@code expiresAt}.
+     * SFTPGo stops its uploads at {@code maxFiles} files and {@code maxBytes} bytes (the event plan's limits).
+     */
+    public void createUser(String username, String password, String keyPrefix, Instant expiresAt, int maxFiles, long maxBytes) {
         Map<String, Object> body = Map.of(
                 "username", username,
                 "password", password,
                 "status", 1,
                 "expiration_date", expiresAt.toEpochMilli(),
+                "quota_files", maxFiles,
+                "quota_size", maxBytes,
                 "home_dir", "/var/lib/sftpgo/users/" + username,
                 "permissions", Map.of("/", List.of("list", "upload", "create_dirs")),
                 "filesystem", Map.of(

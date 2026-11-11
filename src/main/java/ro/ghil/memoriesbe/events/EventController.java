@@ -228,7 +228,8 @@ class EventController {
         String password = credentials.password();
         repo.insertCamera(cameraId, id, name, username, secrets.encrypt(password));
         try {
-            sftpgo.createUser(username, password, keyPrefix(id, cameraId), expiresAt);
+            var plan = planOf(id);
+            sftpgo.createUser(username, password, keyPrefix(id, cameraId), expiresAt, plan.maxPhotos(), plan.maxBytes());
         } catch (RestClientException ex) {
             repo.deleteCamera(cameraId);
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Could not create the camera user in SFTPGo");
@@ -258,7 +259,8 @@ class EventController {
         String password = credentials.password();
         removeSftpUser(c.sftpUsername());
         try {
-            sftpgo.createUser(c.sftpUsername(), password, keyPrefix(id, cameraId), expiresAt);
+            var plan = planOf(id);
+            sftpgo.createUser(c.sftpUsername(), password, keyPrefix(id, cameraId), expiresAt, plan.maxPhotos(), plan.maxBytes());
         } catch (RestClientException ex) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Could not reset the login in SFTPGo");
         }
@@ -307,6 +309,11 @@ class EventController {
         } catch (RestClientException ex) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Could not remove the camera user in SFTPGo");
         }
+    }
+
+    /** The plan the event was created with; an event without one (made before credits) counts as a full event. */
+    private Plan planOf(UUID eventId) {
+        return lifetime.limits(eventId).map(l -> Plan.of(l.plan())).orElse(Plan.FULL);
     }
 
     private Event owned(Jwt jwt, UUID id) {

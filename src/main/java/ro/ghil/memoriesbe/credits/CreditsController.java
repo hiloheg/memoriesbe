@@ -43,7 +43,7 @@ class CreditsController {
         if (pack != 1 && pack != 5 && pack != 10) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Choose a pack of 1, 5 or 10 credits");
         }
-        String variant = props.variantFor(pack);
+        String variant = props.buyIdFor(pack);
         if (variant == null || props.storeSlug() == null || props.storeSlug().isBlank()) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Payments are not set up yet");
         }

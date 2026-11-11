@@ -39,7 +39,8 @@ import ro.ghil.memoriesbe.storage.PhotoStorage;
 @AutoConfigureMockMvc
 @TestPropertySource(properties = {"GOOGLE_CLIENT_ID=test-client", "spring.flyway.enabled=false",
 		"LEMONSQUEEZY_WEBHOOK_SECRET=test-secret", "LEMONSQUEEZY_STORE_ID=42", "LEMONSQUEEZY_STORE_SLUG=memories",
-		"LEMONSQUEEZY_VARIANT_1=11", "LEMONSQUEEZY_VARIANT_5=55", "LEMONSQUEEZY_VARIANT_10=1010", "LEMONSQUEEZY_ALLOW_TEST=false"})
+		"LEMONSQUEEZY_VARIANT_1=11", "LEMONSQUEEZY_VARIANT_5=55", "LEMONSQUEEZY_VARIANT_10=1010", "LEMONSQUEEZY_ALLOW_TEST=false",
+		"LEMONSQUEEZY_BUY_ID_5=0c6e1d5a-1111-4222-8333-444455556666"})
 class WebhookTests {
 
 	@Autowired MockMvc mvc;
@@ -203,11 +204,18 @@ class WebhookTests {
 		var result = mvc.perform(get("/api/v1/credits/checkout").param("pack", "5").with(jwt().jwt(j -> j.subject("s1").claim("email", "a@b.c"))))
 				.andExpect(status().isOk()).andReturn();
 		String url = URLDecoder.decode(jsonUrl(result.getResponse().getContentAsString()), StandardCharsets.UTF_8);
-		org.junit.jupiter.api.Assertions.assertTrue(url.startsWith("https://memories.lemonsqueezy.com/checkout/buy/55?"), url);
+		org.junit.jupiter.api.Assertions.assertTrue(url.startsWith("https://memories.lemonsqueezy.com/checkout/buy/0c6e1d5a-1111-4222-8333-444455556666?"), "buy links use the id from the Share link, not the variant id: " + url);
 		org.junit.jupiter.api.Assertions.assertTrue(url.contains("checkout[email]=a@b.c"), url);
 		org.junit.jupiter.api.Assertions.assertTrue(url.contains("checkout[custom][owner_sub]=s1"), url);
 		mvc.perform(get("/api/v1/credits/checkout").param("pack", "7").with(jwt().jwt(j -> j.subject("s1").claim("email", "a@b.c"))))
 				.andExpect(status().isBadRequest());
+	}
+
+	@Test
+	void checkoutLinkFallsBackToTheVariantIdWhenThereIsNoBuyId() throws Exception {
+		var result = mvc.perform(get("/api/v1/credits/checkout").param("pack", "1").with(jwt().jwt(j -> j.subject("s1").claim("email", "a@b.c"))))
+				.andExpect(status().isOk()).andReturn();
+		org.junit.jupiter.api.Assertions.assertTrue(jsonUrl(result.getResponse().getContentAsString()).startsWith("https://memories.lemonsqueezy.com/checkout/buy/11?"));
 	}
 
 	private static String jsonUrl(String json) {

@@ -20,12 +20,14 @@ public class GuestUploadService {
     /** Most guest photos one event can hold, whoever added them. */
     static final int EVENT_CAP = 2000;
 
+    private final EventLifetime lifetime;
     private final GuestRepository guests;
     private final PhotoStorage storage;
     private final TransactionTemplate tx;
     private final UploadRateLimiter limiter;
 
-    public GuestUploadService(GuestRepository guests, PhotoStorage storage, PlatformTransactionManager txManager, UploadRateLimiter limiter) {
+    public GuestUploadService(GuestRepository guests, PhotoStorage storage, PlatformTransactionManager txManager, UploadRateLimiter limiter, EventLifetime lifetime) {
+        this.lifetime = lifetime;
         this.guests = guests;
         this.storage = storage;
         this.tx = new TransactionTemplate(txManager);
@@ -41,6 +43,7 @@ public class GuestUploadService {
 
     /** Stores one photo and returns how many more this guest may add. */
     public int upload(Event event, String sub, String name, byte[] bytes) {
+        lifetime.requireOpen(event.id());
         if (!event.guestUploadsEnabled() || event.guestUploadLimit() <= 0) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Uploads are switched off for this event");
         }
@@ -52,6 +55,13 @@ public class GuestUploadService {
         if (!limiter.tryAcquire(sub)) {
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Too many uploads. Wait a minute and try again");
         }
+        // The plan's photo and storage limits cover everything in the event: camera photos and guest photos together.
+        lifetime.limits(event.id()).ifPresent(l -> {
+            var usage = storage.usage("events/" + event.id() + "/");
+            if (usage.photos() >= l.maxPhotos() || usage.bytes() + bytes.length > l.maxBytes()) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "This event has reached its photo limit");
+            }
+        });
         return tx.execute(status -> {
             Guest guest = guests.ensureGuest(event.id(), sub, name);
             Guest locked = guests.lockGuest(guest.id()); // one upload at a time per guest, so the count below cannot be raced

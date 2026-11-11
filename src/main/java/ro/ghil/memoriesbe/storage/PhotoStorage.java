@@ -47,20 +47,36 @@ public class PhotoStorage {
     /** A stored photo before it gets a download URL. */
     public record Entry(String key, String name, Instant modified, String folder) {}
 
-    /** Every image under the prefix with no URL signed yet, so callers can sort and page cheaply. At most 1000 per prefix. */
+    /** How many photos and bytes an event (or any prefix) holds; the small copies under thumbs/ are not counted. */
+    public record Usage(int photos, long bytes) {}
+
+    public Usage usage(String prefix) {
+        var images = images(prefix);
+        return new Usage(images.size(), images.stream().mapToLong(o -> o.size() == null ? 0L : o.size()).sum());
+    }
+
+    /** Every image under the prefix, reading all pages of the listing (an event can hold thousands of photos). */
+    private List<S3Object> images(String prefix) {
+        var out = new java.util.ArrayList<S3Object>();
+        String token = null;
+        do {
+            var res = s3.listObjectsV2(ListObjectsV2Request.builder().bucket(bucket).prefix(prefix).maxKeys(1000).continuationToken(token).build());
+            res.contents().stream().filter(o -> isImage(o.key())).forEach(out::add);
+            token = Boolean.TRUE.equals(res.isTruncated()) ? res.nextContinuationToken() : null;
+        } while (token != null);
+        return out;
+    }
+
+    /** Every image under the prefix with no URL signed yet, so callers can sort and page cheaply. */
     public List<Entry> entries(String prefix, String folder) {
-        var res = s3.listObjectsV2(ListObjectsV2Request.builder().bucket(bucket).prefix(prefix).maxKeys(1000).build());
-        return res.contents().stream()
-                .filter(o -> isImage(o.key()))
+        return images(prefix).stream()
                 .map(o -> new Entry(o.key(), o.key().substring(prefix.length()), o.lastModified() == null ? Instant.EPOCH : o.lastModified(), folder))
                 .toList();
     }
 
-    /** Newest first, at most 1000 photos per prefix. */
+    /** Newest first. */
     public List<Photo> list(String prefix) {
-        var res = s3.listObjectsV2(ListObjectsV2Request.builder().bucket(bucket).prefix(prefix).maxKeys(1000).build());
-        return res.contents().stream()
-                .filter(o -> isImage(o.key()))
+        return images(prefix).stream()
                 .sorted(Comparator.comparing((S3Object o) -> o.lastModified() == null ? Instant.EPOCH : o.lastModified()).reversed())
                 .map(o -> new Photo(o.key().substring(prefix.length()), signedUrl(o.key()), o.key(), o.lastModified() == null ? 0L : o.lastModified().getEpochSecond()))
                 .toList();

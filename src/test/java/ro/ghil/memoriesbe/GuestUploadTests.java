@@ -104,7 +104,52 @@ class GuestUploadTests {
 	private final GuestRepository guests = mock(GuestRepository.class);
 	private final PhotoStorage storage = mock(PhotoStorage.class);
 	private final PlatformTransactionManager tx = mock(PlatformTransactionManager.class);
-	private final GuestUploadService service = new GuestUploadService(guests, storage, tx, new UploadRateLimiter());
+	private final ro.ghil.memoriesbe.events.EventLifetime lifetime = mock(ro.ghil.memoriesbe.events.EventLifetime.class);
+	private final GuestUploadService service = new GuestUploadService(guests, storage, tx, new UploadRateLimiter(), lifetime);
+
+	private static ro.ghil.memoriesbe.events.EventRepository.Limits limitsOf(UUID eventId, int maxPhotos, long maxBytes) {
+		var closes = java.time.OffsetDateTime.now().plusDays(30);
+		return new ro.ghil.memoriesbe.events.EventRepository.Limits(eventId, "full", maxPhotos, maxBytes, closes, closes.plusDays(14), null);
+	}
+
+	@Test
+	void guestCannotUploadToAnExpiredEvent() {
+		var e = event(true, 3);
+		org.mockito.Mockito.doThrow(new ResponseStatusException(HttpStatus.GONE, "This gallery has expired")).when(lifetime).requireOpen(e.id());
+		assertEquals(HttpStatus.GONE, statusOf(() -> service.upload(e, "g1", "Ana Pop", JPEG)));
+		verify(storage, never()).put(anyString(), any(byte[].class), anyString());
+	}
+
+	@Test
+	void guestUploadRefusedWhenTheEventIsFull() {
+		var e = event(true, 3);
+		guestFor(e);
+		when(lifetime.limits(e.id())).thenReturn(java.util.Optional.of(limitsOf(e.id(), 3000, 42949672960L)));
+		when(storage.usage("events/" + e.id() + "/")).thenReturn(new PhotoStorage.Usage(3000, 1));
+		var ex = assertThrows(ResponseStatusException.class, () -> service.upload(e, "g1", "Ana Pop", JPEG));
+		assertEquals(HttpStatus.FORBIDDEN, ex.getStatusCode());
+		assertTrue(ex.getReason().contains("photo limit"), ex.getReason());
+		verify(storage, never()).put(anyString(), any(byte[].class), anyString());
+	}
+
+	@Test
+	void guestUploadRefusedWhenTheEventIsOverItsStorageCap() {
+		var e = event(true, 3);
+		guestFor(e);
+		when(lifetime.limits(e.id())).thenReturn(java.util.Optional.of(limitsOf(e.id(), 3000, 42949672960L)));
+		when(storage.usage("events/" + e.id() + "/")).thenReturn(new PhotoStorage.Usage(10, 42949672960L));
+		assertEquals(HttpStatus.FORBIDDEN, statusOf(() -> service.upload(e, "g1", "Ana Pop", JPEG)));
+	}
+
+	@Test
+	void guestUploadAllowedWhileThereIsRoom() {
+		var e = event(true, 3);
+		var g = guestFor(e);
+		when(guests.usedBy(g.id())).thenReturn(0);
+		when(lifetime.limits(e.id())).thenReturn(java.util.Optional.of(limitsOf(e.id(), 3000, 42949672960L)));
+		when(storage.usage("events/" + e.id() + "/")).thenReturn(new PhotoStorage.Usage(2999, 1000));
+		assertEquals(2, service.upload(e, "g1", "Ana Pop", JPEG));
+	}
 
 	private static Event event(boolean enabled, int limit) {
 		return new Event(UUID.randomUUID(), "owner", "Nunta", "nunta", java.time.LocalDate.of(2026, 6, 12), "camera", true, "tok", null, null, enabled, limit);

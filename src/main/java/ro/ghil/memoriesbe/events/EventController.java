@@ -62,6 +62,7 @@ class EventController {
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final CreditService credits;
+    private final EventLifetime lifetime;
     private final EventRepository repo;
     private final SftpGoClient sftpgo;
     private final PhotoStorage storage;
@@ -72,9 +73,10 @@ class EventController {
     private final Props.Ftp ftp;
     private final String publicBaseUrl;
 
-    EventController(CreditService credits, EventRepository repo, SftpGoClient sftpgo, PhotoStorage storage, ProfileRepository profiles, CredentialGenerator credentials, SecretBox secrets, EventAccess access, Props.Ftp ftp,
+    EventController(CreditService credits, EventLifetime lifetime, EventRepository repo, SftpGoClient sftpgo, PhotoStorage storage, ProfileRepository profiles, CredentialGenerator credentials, SecretBox secrets, EventAccess access, Props.Ftp ftp,
                     @Value("${app.public-base-url}") String publicBaseUrl) {
         this.credits = credits;
+        this.lifetime = lifetime;
         this.repo = repo;
         this.sftpgo = sftpgo;
         this.storage = storage;
@@ -213,6 +215,8 @@ class EventController {
     @ResponseStatus(HttpStatus.CREATED)
     CameraCredentials addCamera(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id, @RequestBody CreateRequest req) {
         Event event = owned(jwt, id);
+        lifetime.requireOpen(id);
+        lifetime.requireCameraRoom(id, repo.cameras(id).size());
         String name = requireName(req.name());
         Instant expiresAt = accessEnds(event.eventDate());
         if (!Instant.now().isBefore(expiresAt)) {
@@ -245,6 +249,7 @@ class EventController {
     @PostMapping("/{id}/cameras/{cameraId}/credentials/reset")
     CameraCredentials resetCredentials(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id, @PathVariable UUID cameraId) {
         Event event = owned(jwt, id);
+        lifetime.requireOpen(id);
         Camera c = repo.camera(cameraId, id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         Instant expiresAt = accessEnds(event.eventDate());
         if (!Instant.now().isBefore(expiresAt)) {

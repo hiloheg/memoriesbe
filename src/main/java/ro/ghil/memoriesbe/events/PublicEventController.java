@@ -50,8 +50,11 @@ class PublicEventController {
     private final ProfileViews views;
     private final ThumbLinks thumbs;
 
+    private final EventLifetime lifetime;
+
     PublicEventController(EventRepository repo, PhotoStorage storage, EventAccess access, GuestRepository guests,
-                          ProfileRepository profiles, ProfileViews views, ThumbLinks thumbs) {
+                          ProfileRepository profiles, ProfileViews views, ThumbLinks thumbs, EventLifetime lifetime) {
+        this.lifetime = lifetime;
         this.thumbs = thumbs;
         this.profiles = profiles;
         this.views = views;
@@ -74,6 +77,7 @@ class PublicEventController {
                      @RequestHeader(value = PASSWORD_HEADER, required = false) String password) {
         Event event = repo.eventBySlugs(slug.toLowerCase(), eventSlug.toLowerCase())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        lifetime.requireOpen(event.id());
         access.require(event, password);
         var sources = sources(event);
         var tagged = sources.stream()
@@ -114,6 +118,7 @@ class PublicEventController {
     }
 
     private Gallery gallery(String password, Event event) {
+        lifetime.requireOpen(event.id());
         access.require(event, password);
         List<Folder> folders = sources(event).stream()
                 .map(src -> new Folder(src.id(), src.label(), src.kind(), storage.list(src.prefix()).stream().map(this::galleryPhoto).toList()))

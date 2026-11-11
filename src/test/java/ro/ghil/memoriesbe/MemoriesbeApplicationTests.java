@@ -169,7 +169,58 @@ class MemoriesbeApplicationTests {
 				org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("wedding"), org.mockito.ArgumentMatchers.eq(true), org.mockito.ArgumentMatchers.anyString());
 	}
 
-	private static final String NEW_EVENT = "{\"name\":\"Nunta\",\"date\":\"2026-12-20\",\"icon\":\"wedding\"";
+	private EventRepository.Limits limits(UUID id, String plan, int days) {
+		var closes = java.time.OffsetDateTime.now().plusDays(days);
+		return new EventRepository.Limits(id, plan, plan.equals("trial") ? 300 : 3000, 42949672960L, closes, closes.plusDays(14), null);
+	}
+
+	private EventRepository.Camera camera(UUID eventId) {
+		return new EventRepository.Camera(UUID.randomUUID(), eventId, "Cam", "cam_x", java.time.OffsetDateTime.now(), null);
+	}
+
+	@Test
+	void expiredGalleryIs410() throws Exception {
+		UUID id = UUID.randomUUID();
+		var e = event(id, java.time.LocalDate.of(2026, 1, 1));
+		when(repo.eventByToken("tok")).thenReturn(Optional.of(e));
+		when(repo.eventBySlugs("ana", "nunta")).thenReturn(Optional.of(e));
+		when(repo.limitsOf(id)).thenReturn(Optional.of(limits(id, "full", -1)));
+		mvc.perform(get("/api/v1/public/events/tok")).andExpect(status().isGone());
+		mvc.perform(get("/api/v1/public/photographers/ana/events/nunta/photos")).andExpect(status().isGone());
+	}
+
+	@Test
+	void cannotAddACameraToAnExpiredEvent() throws Exception {
+		UUID id = UUID.randomUUID();
+		when(repo.eventOf(id, "s1")).thenReturn(Optional.of(event(id, java.time.LocalDate.now(java.time.ZoneOffset.UTC))));
+		when(repo.limitsOf(id)).thenReturn(Optional.of(limits(id, "full", -1)));
+		post("/api/v1/events/" + id + "/cameras", "{\"name\":\"Late\"}").andExpect(status().isGone());
+		org.mockito.Mockito.verifyNoInteractions(sftpgo);
+	}
+
+	@Test
+	void trialEventAllowsOnlyOneCamera() throws Exception {
+		UUID id = UUID.randomUUID();
+		when(repo.eventOf(id, "s1")).thenReturn(Optional.of(event(id, java.time.LocalDate.now(java.time.ZoneOffset.UTC))));
+		when(repo.limitsOf(id)).thenReturn(Optional.of(limits(id, "trial", 10)));
+		when(repo.cameras(id)).thenReturn(List.of(camera(id)));
+		post("/api/v1/events/" + id + "/cameras", "{\"name\":\"Second\"}").andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.message").value("Trial events support 1 camera. Buy a pack to create full events with more cameras."));
+		org.mockito.Mockito.verifyNoInteractions(sftpgo);
+		when(repo.cameras(id)).thenReturn(List.of());
+		post("/api/v1/events/" + id + "/cameras", "{\"name\":\"First\"}").andExpect(status().isCreated());
+	}
+
+	@Test
+	void fullEventAllowsManyCameras() throws Exception {
+		UUID id = UUID.randomUUID();
+		when(repo.eventOf(id, "s1")).thenReturn(Optional.of(event(id, java.time.LocalDate.now(java.time.ZoneOffset.UTC))));
+		when(repo.limitsOf(id)).thenReturn(Optional.of(limits(id, "full", 10)));
+		when(repo.cameras(id)).thenReturn(List.of(camera(id), camera(id), camera(id), camera(id), camera(id)));
+		post("/api/v1/events/" + id + "/cameras", "{\"name\":\"Sixth\"}").andExpect(status().isCreated());
+	}
+
+	private static final String NEW_EVENT ="{\"name\":\"Nunta\",\"date\":\"2026-12-20\",\"icon\":\"wedding\"";
 
 	@Test
 	void creatingAnEventNeedsConfirmation() throws Exception {

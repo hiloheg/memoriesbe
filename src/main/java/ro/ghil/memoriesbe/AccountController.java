@@ -25,7 +25,7 @@ class AccountController {
     record CameraExport(String name, String username, OffsetDateTime createdAt, int photos) {}
     record EventExport(String name, String slug, LocalDate eventDate, String icon, String visibility, OffsetDateTime createdAt, List<CameraExport> cameras) {}
     record LinkExport(String label, String url) {}
-    record ProfileExport(String name, String slug, String tagline, String bio, String website, String accent, boolean followGate, boolean hasUploadedPicture, List<LinkExport> links) {}
+    record ProfileExport(String name, String slug, String tagline, String bio, String website, String accent, boolean followGate, boolean hasUploadedPicture, boolean hasUploadedLogo, List<LinkExport> links) {}
     record Export(String email, String googleAccountId, ProfileExport profile, List<EventExport> events, String note) {}
 
     private final EventRepository events;
@@ -46,7 +46,7 @@ class AccountController {
         String sub = jwt.getSubject();
         var profile = profiles.bySub(sub).orElse(null);
         ProfileExport pe = profile == null ? null : new ProfileExport(profile.name(), profile.slug(), profile.tagline(), profile.bio(),
-                profile.website(), profile.accent(), profile.followGate(), profile.avatarKey() != null,
+                profile.website(), profile.accent(), profile.followGate(), profile.avatarKey() != null, profile.logoKey() != null,
                 profiles.links(sub).stream().map(l -> new LinkExport(l.label(), l.url())).toList());
         List<EventExport> list = new ArrayList<>();
         for (var e : events.eventsOf(sub)) {
@@ -63,7 +63,7 @@ class AccountController {
     }
 
     /**
-     * Deletes the account for good: camera logins, every photo, the events, the picture, the follow buttons and the profile.
+     * Deletes the account for good: camera logins, every photo, the events, the picture and logo, the follow buttons and the profile.
      * Safe to repeat if a step fails: what is already gone is skipped.
      */
     @DeleteMapping("/api/v1/me")
@@ -84,6 +84,7 @@ class AccountController {
             }
             var profile = profiles.bySub(sub);
             if (profile.isPresent() && profile.get().avatarKey() != null) storage.delete(profile.get().avatarKey());
+            if (profile.isPresent() && profile.get().logoKey() != null) storage.delete(profile.get().logoKey());
             profiles.deleteAll(sub);
         } catch (RestClientException | IllegalStateException ex) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Could not delete everything. Nothing is lost: try again in a moment.");

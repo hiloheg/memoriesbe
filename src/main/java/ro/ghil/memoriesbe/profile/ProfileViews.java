@@ -14,10 +14,10 @@ public class ProfileViews {
 
     public record ProfileDto(String email, String name, String slug, String tagline, String bio, String accent,
                              String website, String instagram, String picture, boolean customPicture, String shareUrl,
-                             boolean followGate, List<Link> links, Background background) {}
+                             boolean followGate, List<Link> links, Background background, String logo) {}
 
     /** What the page background looks like: kind, preset key, pattern key and effect key. */
-    public record Background(String kind, String value, String pattern, String effect) {}
+    public record Background(String kind, String value, String pattern, String effect, String frame, String social) {}
 
     private final PhotoStorage storage;
     private final ProfileRepository profiles;
@@ -32,7 +32,7 @@ public class ProfileViews {
     public ProfileDto dto(Profile p, String email) {
         return new ProfileDto(email, p.name(), p.slug(), nz(p.tagline()), nz(p.bio()), accent(p),
                 nz(p.website()), nz(p.instagram()), pictureUrl(p), p.avatarKey() != null, pageUrl(p.slug()),
-                p.followGate(), profiles.links(p.ownerSub()), background(p));
+                p.followGate(), profiles.links(p.ownerSub()), background(p), logoUrl(p));
     }
 
     public String pageUrl(String slug) {
@@ -45,8 +45,13 @@ public class ProfileViews {
         return p.googlePicture() == null ? "" : p.googlePicture();
     }
 
+    /** Short-lived signed link to the photographer's logo, or empty when there is none. */
+    public String logoUrl(Profile p) {
+        return p.logoKey() == null ? "" : storage.signedUrl(p.logoKey());
+    }
+
     public static Background background(Profile p) {
-        return new Background(p.bgKind(), p.bgValue(), p.bgPattern(), p.bgEffect());
+        return new Background(p.bgKind(), p.bgValue(), p.bgPattern(), p.bgEffect(), p.frame(), p.socialColor());
     }
 
     public static String accent(Profile p) {

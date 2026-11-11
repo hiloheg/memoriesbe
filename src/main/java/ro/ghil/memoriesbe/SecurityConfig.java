@@ -8,14 +8,13 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
-import org.springframework.security.oauth2.core.OAuth2Error;
 import org.springframework.security.oauth2.core.OAuth2TokenValidator;
-import org.springframework.security.oauth2.core.OAuth2TokenValidatorResult;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationProvider;
+import org.springframework.security.authentication.AuthenticationManager;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -25,8 +24,16 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 @Configuration
 class SecurityConfig {
 
+    private static final String CERTS = "https://www.googleapis.com/oauth2/v3/certs";
+
+    /** Photographer routes need an allow-listed account; the guest area (/api/v1/guest/**) accepts any verified Google account. */
     @Bean
-    SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    SecurityFilterChain filterChain(HttpSecurity http,
+            @Value("${app.google.client-id}") String clientId,
+            JwtDecoder photographerDecoder) throws Exception {
+        JwtDecoder guestDecoder = decoder(GoogleTokens.validators(clientId, List.of()));
+        AuthenticationManager photographers = new JwtAuthenticationProvider(photographerDecoder)::authenticate;
+        AuthenticationManager guests = new JwtAuthenticationProvider(guestDecoder)::authenticate;
         http
             .cors(Customizer.withDefaults())
             .csrf(csrf -> csrf.disable())
@@ -34,7 +41,8 @@ class SecurityConfig {
             .authorizeHttpRequests(a -> a
                 .requestMatchers("/api/v1/public/**").permitAll()
                 .anyRequest().authenticated())
-            .oauth2ResourceServer(o -> o.jwt(Customizer.withDefaults()));
+            .oauth2ResourceServer(o -> o.authenticationManagerResolver(
+                    (HttpServletRequest req) -> GoogleTokens.isGuestPath(req.getRequestURI()) ? guests : photographers));
         return http.build();
     }
 
@@ -42,29 +50,14 @@ class SecurityConfig {
     JwtDecoder jwtDecoder(
             @Value("${app.google.client-id}") String clientId,
             @Value("${app.google.allowed-emails:}") String allowedEmails) {
-        NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri("https://www.googleapis.com/oauth2/v3/certs").build();
         List<String> allowed = Arrays.stream(allowedEmails.split(","))
                 .map(String::trim).filter(s -> !s.isEmpty()).map(String::toLowerCase).toList();
+        return decoder(GoogleTokens.validators(clientId, allowed));
+    }
 
-        OAuth2TokenValidator<Jwt> audience = jwt -> jwt.getAudience() != null && jwt.getAudience().contains(clientId)
-                ? OAuth2TokenValidatorResult.success()
-                : OAuth2TokenValidatorResult.failure(new OAuth2Error("invalid_token", "Wrong audience", null));
-        OAuth2TokenValidator<Jwt> email = jwt -> {
-            String e = jwt.getClaimAsString("email");
-            boolean ok = Boolean.TRUE.equals(jwt.getClaimAsBoolean("email_verified")) && e != null
-                    && (allowed.isEmpty() || allowed.contains(e.toLowerCase()));
-            return ok ? OAuth2TokenValidatorResult.success()
-                    : OAuth2TokenValidatorResult.failure(new OAuth2Error("invalid_token", "Email not allowed", null));
-        };
-        // Google ID tokens use either issuer form.
-        OAuth2TokenValidator<Jwt> issuer = jwt -> {
-            String i = jwt.getIssuer() == null ? "" : jwt.getIssuer().toString();
-            return i.equals("https://accounts.google.com") || i.equals("accounts.google.com")
-                    ? OAuth2TokenValidatorResult.success()
-                    : OAuth2TokenValidatorResult.failure(new OAuth2Error("invalid_token", "Wrong issuer", null));
-        };
-        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
-                JwtValidators.createDefault(), issuer, audience, email));
+    private static JwtDecoder decoder(OAuth2TokenValidator<Jwt> validator) {
+        NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri(CERTS).build();
+        decoder.setJwtValidator(validator);
         return decoder;
     }
 

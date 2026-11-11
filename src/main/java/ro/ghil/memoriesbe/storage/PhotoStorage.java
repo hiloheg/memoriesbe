@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.stereotype.Component;
 import ro.ghil.memoriesbe.config.Props;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -16,13 +17,19 @@ import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.ObjectIdentifier;
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
+import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 import software.amazon.awssdk.services.s3.model.S3Object;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
 /** Lists photos under an R2 prefix and hands out short-lived presigned GET URLs (the bucket stays private). */
 @Component
 public class PhotoStorage {
-    public record Photo(String name, String url) {}
+    /** key and modified (epoch seconds) let the caller build links to the small copies; both are empty for hand-made test photos. */
+    public record Photo(String name, String url, String key, long modified) {
+        public Photo(String name, String url) {
+            this(name, url, null, 0L);
+        }
+    }
 
     private static final Set<String> IMAGES = Set.of("jpg", "jpeg", "png", "webp", "gif");
     private static final Duration URL_TTL = Duration.ofHours(1);
@@ -55,15 +62,23 @@ public class PhotoStorage {
         return res.contents().stream()
                 .filter(o -> isImage(o.key()))
                 .sorted(Comparator.comparing((S3Object o) -> o.lastModified() == null ? Instant.EPOCH : o.lastModified()).reversed())
-                .map(o -> new Photo(o.key().substring(prefix.length()), signedUrl(o.key())))
+                .map(o -> new Photo(o.key().substring(prefix.length()), signedUrl(o.key()), o.key(), o.lastModified() == null ? 0L : o.lastModified().getEpochSecond()))
                 .toList();
     }
 
-    /** Deletes every object under the prefix (all pages, 1000 per request). Safe to call again if it fails halfway. */
+    /** Deletes every object under the prefix (all pages, 1000 per request), and the small copies of those photos. Safe to call again if it fails halfway. */
     public int deleteAll(String prefix) {
         if (prefix == null || prefix.length() < 8 || !prefix.endsWith("/")) {
             throw new IllegalArgumentException("Refusing to delete with an unsafe prefix: " + prefix);
         }
+        int deleted = purge(prefix);
+        if (prefix.startsWith("events/")) {
+            for (int w : ThumbLinks.WIDTHS) purge("thumbs/" + w + "/" + prefix);
+        }
+        return deleted;
+    }
+
+    private int purge(String prefix) {
         int deleted = 0;
         for (var page : s3.listObjectsV2Paginator(ListObjectsV2Request.builder().bucket(bucket).prefix(prefix).build())) {
             var ids = page.contents().stream().map(o -> ObjectIdentifier.builder().key(o.key()).build()).toList();
@@ -78,6 +93,15 @@ public class PhotoStorage {
         return deleted;
     }
 
+    /** The object's bytes, or null when it does not exist. */
+    public byte[] tryGet(String key) {
+        try {
+            return s3.getObjectAsBytes(GetObjectRequest.builder().bucket(bucket).key(key).build()).asByteArray();
+        } catch (NoSuchKeyException ex) {
+            return null;
+        }
+    }
+
     /** Stores one small object (used for profile pictures). */
     public void put(String key, byte[] bytes, String contentType) {
         s3.putObject(PutObjectRequest.builder().bucket(bucket).key(key).contentType(contentType).build(), RequestBody.fromBytes(bytes));
@@ -85,6 +109,9 @@ public class PhotoStorage {
 
     public void delete(String key) {
         s3.deleteObject(DeleteObjectRequest.builder().bucket(bucket).key(key).build());
+        if (key.startsWith("events/")) {
+            for (int w : ThumbLinks.WIDTHS) purge("thumbs/" + w + "/" + key + "@");
+        }
     }
 
     private boolean isImage(String key) {
@@ -92,8 +119,24 @@ public class PhotoStorage {
         return dot >= 0 && IMAGES.contains(key.substring(dot + 1).toLowerCase());
     }
 
+    private record Signed(String url, Instant at) {}
+
+    private static final Duration REUSE = Duration.ofMinutes(30);
+    private static final int MAX_REMEMBERED = 20000;
+    private final ConcurrentHashMap<String, Signed> signed = new ConcurrentHashMap<>();
+
+    /**
+     * A presigned link to the object, kept for half an hour so the same photo has the same address on every request
+     * (a new address each time would defeat the browser's cache). The link itself is valid for an hour.
+     */
     public String signedUrl(String key) {
-        return presigner.presignGetObject(r -> r.signatureDuration(URL_TTL)
-                .getObjectRequest(GetObjectRequest.builder().bucket(bucket).key(key).build())).url().toString();
+        Instant now = Instant.now();
+        var known = signed.get(key);
+        if (known != null && Duration.between(known.at(), now).compareTo(REUSE) < 0) return known.url();
+        if (signed.size() > MAX_REMEMBERED) signed.clear();
+        String url = presigner.presignGetObject(r -> r.signatureDuration(URL_TTL)
+                .getObjectRequest(GetObjectRequest.builder().bucket(bucket).key(key).responseCacheControl("private, max-age=1800").build())).url().toString();
+        signed.put(key, new Signed(url, now));
+        return url;
     }
 }

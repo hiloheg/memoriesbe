@@ -35,9 +35,11 @@ class EventController {
     record CreateEventRequest(String name, LocalDate date, String icon, String visibility, String password) {}
     record VisibilityRequest(String visibility, String password) {}
     record IconRequest(String icon) {}
+    record GuestUploadsRequest(boolean enabled, int limit) {}
     record DetailsRequest(String name, String icon) {}
     record EventDto(UUID id, String name, String slug, String shareUrl, LocalDate eventDate, String icon, String visibility, String accessPassword, boolean main,
-                    OffsetDateTime createdAt, int cameraCount, Instant cameraAccessEndsAt, boolean cameraAccessExpired) {}
+                    OffsetDateTime createdAt, int cameraCount, Instant cameraAccessEndsAt, boolean cameraAccessExpired,
+                    boolean guestUploadsEnabled, int guestUploadLimit) {}
     record CameraDto(UUID id, String name, String username, OffsetDateTime createdAt) {}
     record EventDetail(EventDto event, List<CameraDto> cameras) {}
     record CameraCredentials(UUID id, String name, String username, String password,
@@ -48,6 +50,8 @@ class EventController {
     /** Icons a photographer can pick for an event (the frontend draws one for each key). */
     static final Set<String> ICONS = Set.of("camera", "wedding", "heart", "baptism", "party", "birthday",
             "concert", "conference", "graduation", "sports", "corporate", "travel");
+    /** Most photos one guest may add to one event. */
+    static final int MAX_GUEST_PHOTOS = 50;
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final EventRepository repo;
@@ -123,6 +127,17 @@ class EventController {
     EventDto changeIcon(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id, @RequestBody IconRequest req) {
         owned(jwt, id);
         repo.updateIcon(id, requireIcon(req.icon()));
+        return dto(owned(jwt, id), repo.cameras(id).size(), mainEventId(jwt.getSubject()));
+    }
+
+    /** Lets signed-in guests add photos to this event: switch on/off and how many each guest may add (0 to 50). */
+    @PutMapping("/{id}/guest-uploads")
+    EventDto changeGuestUploads(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id, @RequestBody GuestUploadsRequest req) {
+        owned(jwt, id);
+        if (req.limit() < 0 || req.limit() > MAX_GUEST_PHOTOS) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Choose a limit between 0 and " + MAX_GUEST_PHOTOS + " photos per guest");
+        }
+        repo.setGuestUploads(id, req.enabled(), req.limit());
         return dto(owned(jwt, id), repo.cameras(id).size(), mainEventId(jwt.getSubject()));
     }
 
@@ -245,6 +260,11 @@ class EventController {
         return "events/" + eventId + "/" + cameraId + "/";
     }
 
+    /** R2 key prefix the photos of one guest are written to. */
+    static String guestPrefix(UUID eventId, UUID guestId) {
+        return "events/" + eventId + "/guests/" + guestId + "/";
+    }
+
     private void deletePhotos(String prefix) {
         try {
             storage.deleteAll(prefix);
@@ -307,7 +327,7 @@ class EventController {
         Instant ends = accessEnds(e.eventDate());
         return new EventDto(e.id(), e.name(), e.slug(), shareUrl(e), e.eventDate(), e.icon(),
                 !e.listed() ? "private" : EventAccess.isProtected(e) ? "protected" : "public", access.passwordOf(e), e.id().equals(mainId), e.createdAt(), cameraCount,
-                ends, !Instant.now().isBefore(ends));
+                ends, !Instant.now().isBefore(ends), e.guestUploadsEnabled(), e.guestUploadLimit());
     }
 
     private static String requireIcon(String icon) {

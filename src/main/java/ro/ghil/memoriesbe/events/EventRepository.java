@@ -13,7 +13,7 @@ import org.springframework.stereotype.Repository;
 /** SQL access (JdbcClient) for events and their cameras. */
 @Repository
 public class EventRepository {
-    public record Event(UUID id, String ownerSub, String name, String slug, LocalDate eventDate, String icon, boolean listed, String publicToken, OffsetDateTime createdAt, String accessPasswordEnc) {}
+    public record Event(UUID id, String ownerSub, String name, String slug, LocalDate eventDate, String icon, boolean listed, String publicToken, OffsetDateTime createdAt, String accessPasswordEnc, boolean guestUploadsEnabled, int guestUploadLimit) {}
     public record Camera(UUID id, UUID eventId, String name, String sftpUsername, OffsetDateTime createdAt, String passwordEnc) {}
 
     private final JdbcClient jdbc;
@@ -72,6 +72,10 @@ public class EventRepository {
 
     public void setAccessPassword(UUID id, String passwordEnc) {
         jdbc.sql("update events set access_password_enc = ? where id = ?").params(passwordEnc, id).update();
+    }
+
+    public void setGuestUploads(UUID id, boolean enabled, int limit) {
+        jdbc.sql("update events set guest_uploads_enabled = ?, guest_upload_limit = ? where id = ?").params(enabled, limit, id).update();
     }
 
     public void updateListed(UUID id, boolean listed) {

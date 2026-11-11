@@ -1,8 +1,8 @@
 spring:
   servlet:
     multipart:
-      max-file-size: 3MB
-      max-request-size: 3MB
+      max-file-size: 16MB
+      max-request-size: 16MB
   application:
     name: memoriesbe
   config:
@@ -48,4 +48,7 @@ app:
     public-host: ${FTP_PUBLIC_HOST:localhost}
     public-port: ${FTP_PUBLIC_PORT:21}
     sftp-port: ${SFTP_PUBLIC_PORT:2022}
+  thumbs:
+    # 32+ random characters; signs the links to the small photo copies. Empty = a random key per start (links break on restart).
+    secret: ${THUMB_SECRET:}
   public-base-url: ${PUBLIC_BASE_URL:http://localhost:5173}

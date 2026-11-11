@@ -13,18 +13,18 @@ import org.springframework.transaction.annotation.Transactional;
 @Repository
 public class ProfileRepository {
     public record Profile(String ownerSub, String name, String slug, String tagline, String bio, String accent,
-                          String website, String instagram, String avatarKey, String googlePicture,
+                          String website, String instagram, String avatarKey, String logoKey, String googlePicture,
                           String publicToken, boolean followGate,
-                          String bgKind, String bgValue, String bgPattern, String bgEffect, UUID mainEventId) {}
+                          String bgKind, String bgValue, String bgPattern, String bgEffect, String frame, String socialColor, UUID mainEventId) {}
 
     /** Page background chosen by the photographer: kind (default, color, gradient), preset, pattern and effect keys. */
-    public record Appearance(String kind, String value, String pattern, String effect) {}
+    public record Appearance(String kind, String value, String pattern, String effect, String frame, String social) {}
 
     /** One follow button on the public page. */
     public record Link(UUID id, String label, String url) {}
 
     private static final SecureRandom RANDOM = new SecureRandom();
-    private static final String COLUMNS = "owner_sub, name, slug, tagline, bio, accent, website, instagram, avatar_key, google_picture, public_token, follow_gate, bg_kind, bg_value, bg_pattern, bg_effect, main_event_id";
+    private static final String COLUMNS = "owner_sub, name, slug, tagline, bio, accent, website, instagram, avatar_key, logo_key, google_picture, public_token, follow_gate, bg_kind, bg_value, bg_pattern, bg_effect, frame, social_color, main_event_id";
     private final JdbcClient jdbc;
 
     ProfileRepository(JdbcClient jdbc) {
@@ -72,10 +72,10 @@ public class ProfileRepository {
                        String website, String instagram, boolean followGate, Appearance look) {
         jdbc.sql("""
                 update profiles set name = ?, slug = ?, tagline = ?, bio = ?, accent = ?, website = ?, instagram = ?, follow_gate = ?,
-                    bg_kind = ?, bg_value = ?, bg_pattern = ?, bg_effect = ?
+                    bg_kind = ?, bg_value = ?, bg_pattern = ?, bg_effect = ?, frame = ?, social_color = ?
                 where owner_sub = ?""")
                 .params(name, slug, tagline, bio, accent, website, instagram, followGate,
-                        look.kind(), look.value(), look.pattern(), look.effect(), ownerSub).update();
+                        look.kind(), look.value(), look.pattern(), look.effect(), look.frame(), look.social(), ownerSub).update();
     }
 
     /** The event the page shows on its own; null shows the public events instead. */
@@ -85,6 +85,10 @@ public class ProfileRepository {
 
     public void setAvatarKey(String ownerSub, String key) {
         jdbc.sql("update profiles set avatar_key = ? where owner_sub = ?").params(key, ownerSub).update();
+    }
+
+    public void setLogoKey(String ownerSub, String key) {
+        jdbc.sql("update profiles set logo_key = ? where owner_sub = ?").params(key, ownerSub).update();
     }
 
     /** Removes the profile and its follow buttons (account deletion). */

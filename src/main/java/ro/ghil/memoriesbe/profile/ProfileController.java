@@ -24,16 +24,22 @@ class ProfileController {
     record LinkRequest(String label, String url) {}
     record UpdateRequest(String name, String slug, String tagline, String bio, String accent, String website,
                          String instagram, Boolean followGate, List<LinkRequest> links,
-                         String bgKind, String bgValue, String bgPattern, String bgEffect) {}
+                         String bgKind, String bgValue, String bgPattern, String bgEffect, String bgFrame, String bgSocial) {}
 
     static final Set<String> ACCENTS = Set.of("#0e7c6b", "#2f5bd8", "#7d4fd6", "#c2410c", "#be185d", "#15803d");
     /** Background presets; the frontend (src/backgrounds.js) draws one look for each key. */
     static final Set<String> BG_COLORS = Set.of("snow", "mist", "sand", "blush", "mint", "sky", "lavender", "midnight", "forest", "charcoal");
     static final Set<String> BG_GRADIENTS = Set.of("dawn", "peach", "meadow", "ocean", "orchid", "twilight", "deepsea", "ember");
     static final Set<String> BG_PATTERNS = Set.of("none", "dots", "grid", "lines", "checks", "waves", "confetti");
+    /** Frame themes that decorate the picture, header, tags and photos; the frontend (src/frames.js) draws each one. */
+    static final Set<String> FRAMES = Set.of("none", "neon", "gold", "holo", "pixel", "paper");
+    /** Follow button colors besides the page accent (empty): black, white and the accent colors. */
+    static final Set<String> SOCIAL_COLORS = Set.of("", "#12161c", "#ffffff", "#0e7c6b", "#2f5bd8", "#7d4fd6", "#c2410c", "#be185d", "#15803d");
     static final Set<String> BG_EFFECTS = Set.of("none", "grain", "glow", "aurora", "vignette");
     private static final int MAX_LINKS = 5;
     private static final long MAX_PICTURE_BYTES = 2L * 1024 * 1024;
+
+    private static final int MAX_LOGO_SIDE = 2000;
 
     private final ProfileRepository profiles;
     private final ProfileViews views;
@@ -107,6 +113,31 @@ class ProfileController {
         return views.dto(profiles.bySub(current.ownerSub()).orElseThrow(), email(jwt));
     }
 
+    /** Accepts a JPEG, PNG or WebP logo up to 2 MB and 2000 px on each side. */
+    @PostMapping(path = "/logo", consumes = "multipart/form-data")
+    ProfileDto uploadLogo(@AuthenticationPrincipal Jwt jwt, @RequestParam("file") MultipartFile file) throws IOException {
+        Profile current = current(jwt);
+        if (file.isEmpty() || file.getSize() > MAX_PICTURE_BYTES) throw bad("Logo must be smaller than 2 MB");
+        byte[] bytes = file.getBytes();
+        String ext = extensionOf(bytes);
+        if (ext == null) throw bad("Logo must be a JPEG, PNG or WebP image");
+        int[] size = ImageDimensions.of(bytes);
+        if (size != null && (size[0] <= 0 || size[1] <= 0 || size[0] > MAX_LOGO_SIDE || size[1] > MAX_LOGO_SIDE)) throw bad("Logo must be between 1 and 2000 pixels wide and tall");
+        String key = "profiles/" + current.publicToken() + "/logo/" + UUID.randomUUID() + "." + ext;
+        storage.put(key, bytes, contentType(ext));
+        profiles.setLogoKey(current.ownerSub(), key);
+        if (current.logoKey() != null) storage.delete(current.logoKey());
+        return views.dto(profiles.bySub(current.ownerSub()).orElseThrow(), email(jwt));
+    }
+
+    @DeleteMapping("/logo")
+    ProfileDto removeLogo(@AuthenticationPrincipal Jwt jwt) {
+        Profile current = current(jwt);
+        profiles.setLogoKey(current.ownerSub(), null);
+        if (current.logoKey() != null) storage.delete(current.logoKey());
+        return views.dto(profiles.bySub(current.ownerSub()).orElseThrow(), email(jwt));
+    }
+
     private Profile current(Jwt jwt) {
         String email = email(jwt);
         String name = jwt.getClaimAsString("name");
@@ -123,6 +154,8 @@ class ProfileController {
         String value = r.bgValue() == null ? "" : r.bgValue();
         String pattern = r.bgPattern() == null || r.bgPattern().isBlank() ? "none" : r.bgPattern();
         String effect = r.bgEffect() == null || r.bgEffect().isBlank() ? "none" : r.bgEffect();
+        String social = r.bgSocial() == null ? "" : r.bgSocial();
+        String frame = r.bgFrame() == null || r.bgFrame().isBlank() ? "none" : r.bgFrame();
         switch (kind) {
             case "default" -> value = "";
             case "color" -> { if (!BG_COLORS.contains(value)) throw bad("Choose one of the available background colors"); }
@@ -131,7 +164,9 @@ class ProfileController {
         }
         if (!BG_PATTERNS.contains(pattern)) throw bad("Choose one of the available patterns");
         if (!BG_EFFECTS.contains(effect)) throw bad("Choose one of the available effects");
-        return new Appearance(kind, value, pattern, effect);
+        if (!FRAMES.contains(frame)) throw bad("Choose one of the available frames");
+        if (!SOCIAL_COLORS.contains(social)) throw bad("Choose one of the available button colors");
+        return new Appearance(kind, value, pattern, effect, frame, social);
     }
 
     /** Follow buttons: up to 5, each with a short label and an http(s) link. */

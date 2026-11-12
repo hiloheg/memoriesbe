@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 import ro.ghil.memoriesbe.credits.CreditService;
 import ro.ghil.memoriesbe.events.EventRepository.Event;
+import ro.ghil.memoriesbe.events.EventSources.Source;
 import ro.ghil.memoriesbe.profile.ProfileRepository;
 import ro.ghil.memoriesbe.profile.ProfileViews;
 import ro.ghil.memoriesbe.storage.PhotoStorage;
@@ -39,7 +40,6 @@ class PublicEventController {
     record Tag(String id, String label, String kind, int count) {}
     /** One page of an event's photos from all cameras and guests, newest upload first. `next` is the offset to ask for next, or null at the end. `total` counts the filtered photos, `tags` always cover the whole event. */
     record PhotoPage(String name, LocalDate eventDate, int total, List<StreamPhoto> photos, Integer next, List<Tag> tags, int guestLimit, String logoUrl, Features features) {}
-    private record Source(UUID id, String label, String kind, String prefix) {}
     private record Tagged(PhotoStorage.Entry entry, Source source) {}
 
     private static final int MAX_PAGE = 60;
@@ -55,9 +55,11 @@ class PublicEventController {
 
     private final EventLifetime lifetime;
     private final CreditService credits;
+    private final EventSources eventSources;
 
     PublicEventController(EventRepository repo, PhotoStorage storage, EventAccess access, GuestRepository guests,
-                          ProfileRepository profiles, ProfileViews views, ThumbLinks thumbs, EventLifetime lifetime, CreditService credits) {
+                          ProfileRepository profiles, ProfileViews views, ThumbLinks thumbs, EventLifetime lifetime, CreditService credits, EventSources eventSources) {
+        this.eventSources = eventSources;
         this.credits = credits;
         this.lifetime = lifetime;
         this.thumbs = thumbs;
@@ -105,12 +107,8 @@ class PublicEventController {
         return new PhotoPage(event.name(), event.eventDate(), all.size(), page, to < all.size() ? to : null, tags, guestLimit(event), logoUrl(event), features(event));
     }
 
-    /** Cameras first, then the guests who still have photos here. */
     private List<Source> sources(Event event) {
-        var out = new ArrayList<Source>();
-        repo.cameras(event.id()).forEach(c -> out.add(new Source(c.id(), c.name(), "camera", EventController.keyPrefix(event.id(), c.id()))));
-        guests.guestsWithPhotos(event.id()).forEach(g -> out.add(new Source(g.id(), g.name(), "guest", EventController.guestPrefix(event.id(), g.id()))));
-        return out;
+        return eventSources.of(event);
     }
 
     private static int guestLimit(Event event) {

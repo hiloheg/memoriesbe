@@ -9,4 +9,9 @@ public interface FaceEngine {
 
     /** Every face in the JPEG/PNG bytes, largest first. Empty when there is none or the bytes are not a picture. */
     List<Face> faces(byte[] image);
+
+    /** False when the models are not installed, so callers can leave the feature off instead of failing. */
+    default boolean available() {
+        return true;
+    }
 }

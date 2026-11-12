@@ -67,3 +67,11 @@ app:
     # true only while testing: lets orders made in Lemon Squeezy test mode add credits.
     allow-test: ${LEMONSQUEEZY_ALLOW_TEST:false}
   public-base-url: ${PUBLIC_BASE_URL:http://localhost:5173}
+  faces:
+    # Folder with the two face models (see the Dockerfile). Empty = face search is unavailable and nothing is indexed.
+    model-dir: ${FACE_MODEL_DIR:}
+    # Photos looked at per run, and the pause between runs. Both keep the server calm while photos are being indexed.
+    index-batch: ${FACE_INDEX_BATCH:10}
+    interval-ms: ${FACE_INDEX_INTERVAL_MS:30000}
+    # Faces count as the same person at or above this cosine similarity (0.363 is OpenCV's value for SFace).
+    match-threshold: ${FACE_MATCH_THRESHOLD:0.363}

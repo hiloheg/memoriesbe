@@ -34,22 +34,20 @@ public class FaceRepository {
         return out;
     }
 
-    /** How many times reading this photo failed so far. */
+    /** How many times reading this photo failed so far (0 when never). */
     public int attempts(UUID eventId, String objectKey) {
         return jdbc.sql("select attempts from event_face_photos where event_id = ? and object_key = ?")
                 .params(eventId, objectKey).query(Integer.class).optional().orElse(0);
     }
 
-    /** Counts one failure; the photo is marked done (given up on) when it reaches {@link #MAX_ATTEMPTS}. */
+    /** Counts one failed attempt on this photo (the count starts again when the photo changed). The photo stays pending. */
     public void markFailedAttempt(UUID eventId, String objectKey, long version) {
         jdbc.sql("""
-                insert into event_face_photos (event_id, object_key, version, attempts, done)
-                values (?, ?, ?, 1, 1 >= ?)
+                insert into event_face_photos (event_id, object_key, version, attempts, done) values (?, ?, ?, 1, false)
                 on conflict (event_id, object_key) do update
                 set attempts = case when event_face_photos.version = excluded.version then event_face_photos.attempts + 1 else 1 end,
-                    version = excluded.version,
-                    done = (case when event_face_photos.version = excluded.version then event_face_photos.attempts + 1 else 1 end) >= ?""")
-                .params(eventId, objectKey, version, MAX_ATTEMPTS, MAX_ATTEMPTS).update();
+                    version = excluded.version, done = false""")
+                .params(eventId, objectKey, version).update();
     }
 
     /** Replaces the faces of this photo with these and marks it done. */

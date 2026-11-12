@@ -110,6 +110,12 @@ public class EventRepository {
         jdbc.sql("update events set face_search_enabled = ? where id = ?").params(enabled, id).update();
     }
 
+    /** Events with face search on whose photos are still online. */
+    public List<Event> faceSearchEvents() {
+        return jdbc.sql("select * from events where face_search_enabled and purged_at is null and (expires_at is null or expires_at > now()) order by created_at")
+                .query(Event.class).list();
+    }
+
     public void updateListed(UUID id, boolean listed) {
         jdbc.sql("update events set listed = ? where id = ?").params(listed, id).update();
     }

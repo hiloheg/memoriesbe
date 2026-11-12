@@ -3,7 +3,7 @@ package ro.ghil.memoriesbe.credits;
 /** What an event gets from the credit that paid for it: the free credit makes a trial event, a purchased one a full event. */
 public enum Plan {
     TRIAL("trial", 300, 4L * 1024 * 1024 * 1024, 30, 1),
-    FULL("full", 3000, 40L * 1024 * 1024 * 1024, 90, Integer.MAX_VALUE);
+    FULL("full", 3000, 500L * 1024 * 1024 * 1024, 90, Integer.MAX_VALUE);
 
     private final String key;
     private final int maxPhotos;

@@ -44,7 +44,7 @@ class CreditsTests {
 		assertEquals(30, Plan.TRIAL.days());
 		assertEquals(1, Plan.TRIAL.maxCameras());
 		assertEquals(3000, Plan.FULL.maxPhotos());
-		assertEquals(40 * GIB, Plan.FULL.maxBytes());
+		assertEquals(500 * GIB, Plan.FULL.maxBytes());
 		assertEquals(90, Plan.FULL.days());
 		assertEquals(Integer.MAX_VALUE, Plan.FULL.maxCameras());
 		assertEquals("full", Plan.FULL.key());

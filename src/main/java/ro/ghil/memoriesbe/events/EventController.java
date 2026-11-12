@@ -40,10 +40,11 @@ class EventController {
     record VisibilityRequest(String visibility, String password) {}
     record IconRequest(String icon) {}
     record GuestUploadsRequest(boolean enabled, int limit) {}
+    record FaceSearchRequest(boolean enabled) {}
     record DetailsRequest(String name, String icon) {}
     record EventDto(UUID id, String name, String slug, String shareUrl, LocalDate eventDate, String icon, String visibility, String accessPassword, boolean main,
                     OffsetDateTime createdAt, int cameraCount, Instant cameraAccessEndsAt, boolean cameraAccessExpired,
-                    boolean guestUploadsEnabled, int guestUploadLimit,
+                    boolean guestUploadsEnabled, int guestUploadLimit, boolean faceSearchEnabled,
                     String plan, int maxPhotos, int maxCameras, OffsetDateTime expiresAt, OffsetDateTime purgeAfter, boolean expired, OffsetDateTime purgedAt) {}
     record CameraDto(UUID id, String name, String username, OffsetDateTime createdAt) {}
     record EventDetail(EventDto event, List<CameraDto> cameras) {}
@@ -161,6 +162,17 @@ class EventController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Choose a limit between 0 and " + MAX_GUEST_PHOTOS + " photos per guest");
         }
         repo.setGuestUploads(id, req.enabled(), req.limit());
+        return dto(owned(jwt, id), repo.cameras(id).size(), mainEventId(jwt.getSubject()));
+    }
+
+    /** Lets guests find their photos by scanning their face. Switching it on comes with the first purchase; switching it off is always allowed. */
+    @PutMapping("/{id}/face-search")
+    EventDto changeFaceSearch(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id, @RequestBody FaceSearchRequest req) {
+        owned(jwt, id);
+        if (req.enabled() && !credits.unlocked(jwt.getSubject())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Face search comes with your first purchase.");
+        }
+        repo.setFaceSearch(id, req.enabled());
         return dto(owned(jwt, id), repo.cameras(id).size(), mainEventId(jwt.getSubject()));
     }
 
@@ -367,7 +379,7 @@ class EventController {
         boolean expired = limits != null && (limits.purgedAt() != null || limits.expiresAt().isBefore(OffsetDateTime.now()));
         return new EventDto(e.id(), e.name(), e.slug(), shareUrl(e), e.eventDate(), e.icon(),
                 !e.listed() ? "private" : EventAccess.isProtected(e) ? "protected" : "public", access.passwordOf(e), e.id().equals(mainId), e.createdAt(), cameraCount,
-                ends, !Instant.now().isBefore(ends), e.guestUploadsEnabled(), e.guestUploadLimit(),
+                ends, !Instant.now().isBefore(ends), e.guestUploadsEnabled(), e.guestUploadLimit(), e.faceSearchEnabled(),
                 limits == null ? null : limits.plan(), limits == null ? 0 : limits.maxPhotos(), plan == null ? Integer.MAX_VALUE : plan.maxCameras(),
                 limits == null ? null : limits.expiresAt(), limits == null ? null : limits.purgeAfter(), expired, limits == null ? null : limits.purgedAt());
     }

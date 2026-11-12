@@ -152,7 +152,7 @@ class GuestUploadTests {
 	}
 
 	private static Event event(boolean enabled, int limit) {
-		return new Event(UUID.randomUUID(), "owner", "Nunta", "nunta", java.time.LocalDate.of(2026, 6, 12), "camera", true, "tok", null, null, enabled, limit);
+		return new Event(UUID.randomUUID(), "owner", "Nunta", "nunta", java.time.LocalDate.of(2026, 6, 12), "camera", true, "tok", null, null, enabled, limit, false);
 	}
 
 	private Guest guestFor(Event e) {

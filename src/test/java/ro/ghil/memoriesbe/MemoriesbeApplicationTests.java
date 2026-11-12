@@ -134,7 +134,7 @@ class MemoriesbeApplicationTests {
 	}
 
 	private EventRepository.Event event(UUID id, java.time.LocalDate date) {
-		return new EventRepository.Event(id, "s1", "Nunta", "nunta", date, "camera", true, "tok", java.time.OffsetDateTime.now(), null, false, 0);
+		return new EventRepository.Event(id, "s1", "Nunta", "nunta", date, "camera", true, "tok", java.time.OffsetDateTime.now(), null, false, 0, false);
 	}
 
 	private org.springframework.test.web.servlet.ResultActions post(String url, String json) throws Exception {
@@ -381,9 +381,9 @@ class MemoriesbeApplicationTests {
 	void profilePageShowsOnlyPublicEventsOrJustTheMainOne() throws Exception {
 		UUID a = UUID.randomUUID(), b = UUID.randomUUID(), c = UUID.randomUUID();
 		var day = java.time.LocalDate.of(2026, 12, 20);
-		var pub = new EventRepository.Event(a, "s1", "Public", "public", day, "camera", true, "t1", java.time.OffsetDateTime.now(), null, false, 0);
-		var hidden = new EventRepository.Event(b, "s1", "Hidden", "hidden", day, "camera", false, "t2", java.time.OffsetDateTime.now(), null, false, 0);
-		var main = new EventRepository.Event(c, "s1", "Main", "main", day, "camera", true, "t3", java.time.OffsetDateTime.now(), null, false, 0);
+		var pub = new EventRepository.Event(a, "s1", "Public", "public", day, "camera", true, "t1", java.time.OffsetDateTime.now(), null, false, 0, false);
+		var hidden = new EventRepository.Event(b, "s1", "Hidden", "hidden", day, "camera", false, "t2", java.time.OffsetDateTime.now(), null, false, 0, false);
+		var main = new EventRepository.Event(c, "s1", "Main", "main", day, "camera", true, "t3", java.time.OffsetDateTime.now(), null, false, 0, false);
 		when(repo.eventsOf("s1")).thenReturn(List.of(pub, hidden, main));
 		// no main event: only the public ones
 		when(profiles.bySlug("ana-pop")).thenReturn(Optional.of(profileWithMain(null)));
@@ -433,7 +433,7 @@ class MemoriesbeApplicationTests {
 		var eventId = UUID.randomUUID();
 		var cam1 = new EventRepository.Camera(UUID.randomUUID(), eventId, "Ceremony", "cam_a", null, null);
 		var cam2 = new EventRepository.Camera(UUID.randomUUID(), eventId, "Party", "cam_b", null, null);
-		var event = new EventRepository.Event(eventId, "owner", "Wedding", "wedding", java.time.LocalDate.of(2026, 6, 12), "heart", true, "tok", null, null, false, 0);
+		var event = new EventRepository.Event(eventId, "owner", "Wedding", "wedding", java.time.LocalDate.of(2026, 6, 12), "heart", true, "tok", null, null, false, 0, false);
 		when(repo.eventBySlugs("ana-pop", "wedding")).thenReturn(Optional.of(event));
 		when(repo.cameras(eventId)).thenReturn(List.of(cam1, cam2));
 		var t = java.time.Instant.parse("2026-06-12T10:00:00Z");
@@ -486,7 +486,7 @@ class MemoriesbeApplicationTests {
 
 	private EventRepository.Event logoEvent() {
 		var eventId = UUID.randomUUID();
-		var event = new EventRepository.Event(eventId, "owner", "Wedding", "wedding", java.time.LocalDate.of(2026, 6, 12), "heart", true, "tok", null, null, false, 0);
+		var event = new EventRepository.Event(eventId, "owner", "Wedding", "wedding", java.time.LocalDate.of(2026, 6, 12), "heart", true, "tok", null, null, false, 0, false);
 		when(repo.eventBySlugs("ana-pop", "wedding")).thenReturn(Optional.of(event));
 		when(repo.eventByToken("tok")).thenReturn(Optional.of(event));
 		when(repo.cameras(eventId)).thenReturn(List.of());
@@ -640,7 +640,7 @@ class MemoriesbeApplicationTests {
 	@Test
 	void protectedEventNeedsItsPassword() throws Exception {
 		UUID id = UUID.randomUUID();
-		var event = new EventRepository.Event(id, "s1", "Nunta", "nunta", java.time.LocalDate.of(2026, 6, 12), "camera", true, "tok", null, box.encrypt("secret1"), false, 0);
+		var event = new EventRepository.Event(id, "s1", "Nunta", "nunta", java.time.LocalDate.of(2026, 6, 12), "camera", true, "tok", null, box.encrypt("secret1"), false, 0, false);
 		when(repo.eventBySlugs("ana-pop", "nunta")).thenReturn(Optional.of(event));
 		when(repo.eventByToken("tok")).thenReturn(Optional.of(event));
 		when(repo.cameras(id)).thenReturn(List.of());
@@ -691,7 +691,7 @@ class MemoriesbeApplicationTests {
 	void accountCanBeExportedAndErasedWithEverythingItOwns() throws Exception {
 		UUID id = UUID.randomUUID();
 		UUID camId = UUID.randomUUID();
-		var event = new EventRepository.Event(id, "s1", "Nunta", "nunta", java.time.LocalDate.of(2026, 6, 12), "camera", true, "tok", null, null, false, 0);
+		var event = new EventRepository.Event(id, "s1", "Nunta", "nunta", java.time.LocalDate.of(2026, 6, 12), "camera", true, "tok", null, null, false, 0, false);
 		when(repo.eventsOf("s1")).thenReturn(List.of(event));
 		when(repo.cameras(id)).thenReturn(List.of(new EventRepository.Camera(camId, id, "Ceremony", "cam_x", null, null)));
 		when(storage.entries(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString())).thenReturn(List.of());
@@ -729,7 +729,7 @@ class MemoriesbeApplicationTests {
 	void guestUploadSettingsAreValidatedAndOwnerOnly() throws Exception {
 		UUID id = UUID.randomUUID();
 		var before = event(id, java.time.LocalDate.of(2026, 12, 20));
-		var after = new EventRepository.Event(id, "s1", "Nunta", "nunta", java.time.LocalDate.of(2026, 12, 20), "camera", true, "tok", null, null, true, 50);
+		var after = new EventRepository.Event(id, "s1", "Nunta", "nunta", java.time.LocalDate.of(2026, 12, 20), "camera", true, "tok", null, null, true, 50, false);
 		when(repo.eventOf(id, "s1")).thenReturn(Optional.of(before), Optional.of(before), Optional.of(after));
 		when(repo.eventOf(id, "intruder")).thenReturn(Optional.empty());
 		put("/api/v1/events/" + id + "/guest-uploads", "{\"enabled\":true,\"limit\":51}").andExpect(status().isBadRequest());
@@ -747,7 +747,7 @@ class MemoriesbeApplicationTests {
 
 	@Test
 	void guestAreaNeedsASignInAndProtectedEventsNeedTheirPassword() throws Exception {
-		var event = new EventRepository.Event(UUID.randomUUID(), "s1", "Nunta", "nunta", java.time.LocalDate.of(2026, 6, 12), "camera", true, "tok", null, box.encrypt("secret1"), true, 5);
+		var event = new EventRepository.Event(UUID.randomUUID(), "s1", "Nunta", "nunta", java.time.LocalDate.of(2026, 6, 12), "camera", true, "tok", null, box.encrypt("secret1"), true, 5, false);
 		when(repo.eventBySlugs("ana-pop", "nunta")).thenReturn(Optional.of(event));
 		mvc.perform(get(GUEST + "/status")).andExpect(status().isUnauthorized());
 		var guest = jwt().jwt(j -> j.subject("g1").claim("name", "Ana"));
@@ -764,7 +764,7 @@ class MemoriesbeApplicationTests {
 
 	@Test
 	void guestUploadUsesTheGoogleNameAndNeverTheEmail() throws Exception {
-		var event = new EventRepository.Event(UUID.randomUUID(), "s1", "Nunta", "nunta", java.time.LocalDate.of(2026, 6, 12), "camera", true, "tok", null, null, true, 5);
+		var event = new EventRepository.Event(UUID.randomUUID(), "s1", "Nunta", "nunta", java.time.LocalDate.of(2026, 6, 12), "camera", true, "tok", null, null, true, 5, false);
 		when(repo.eventBySlugs("ana-pop", "nunta")).thenReturn(Optional.of(event));
 		when(guestUploads.upload(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any())).thenReturn(3);
 		var file = new org.springframework.mock.web.MockMultipartFile("file", "a.jpg", "image/jpeg", new byte[] {1, 2});
@@ -783,7 +783,7 @@ class MemoriesbeApplicationTests {
 		var eventId = UUID.randomUUID();
 		var cam = new EventRepository.Camera(UUID.randomUUID(), eventId, "Ceremony", "cam_a", null, null);
 		var guest = new ro.ghil.memoriesbe.events.GuestRepository.Guest(UUID.randomUUID(), eventId, "g1", "Ana Pop", null, null);
-		var event = new EventRepository.Event(eventId, "owner", "Wedding", "wedding", java.time.LocalDate.of(2026, 6, 12), "heart", true, "tok", null, null, guestLimit > 0, guestLimit);
+		var event = new EventRepository.Event(eventId, "owner", "Wedding", "wedding", java.time.LocalDate.of(2026, 6, 12), "heart", true, "tok", null, null, guestLimit > 0, guestLimit, false);
 		when(repo.eventBySlugs("ana-pop", "wedding")).thenReturn(Optional.of(event));
 		when(repo.cameras(eventId)).thenReturn(List.of(cam));
 		when(guestRepo.guestsWithPhotos(eventId)).thenReturn(List.of(guest));

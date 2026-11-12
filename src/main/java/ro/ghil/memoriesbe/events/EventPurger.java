@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
+import ro.ghil.memoriesbe.faces.FaceRepository;
 import ro.ghil.memoriesbe.sftpgo.SftpGoClient;
 import ro.ghil.memoriesbe.storage.PhotoStorage;
 
@@ -21,8 +22,10 @@ public class EventPurger {
     private final SftpGoClient sftpgo;
     private final PhotoStorage storage;
     private final GuestRepository guests;
+    private final FaceRepository faces;
 
-    public EventPurger(EventRepository repo, SftpGoClient sftpgo, PhotoStorage storage, GuestRepository guests) {
+    public EventPurger(EventRepository repo, SftpGoClient sftpgo, PhotoStorage storage, GuestRepository guests, FaceRepository faces) {
+        this.faces = faces;
         this.repo = repo;
         this.sftpgo = sftpgo;
         this.storage = storage;
@@ -45,6 +48,7 @@ public class EventPurger {
                 storage.deleteAll("events/" + id + "/");
                 for (var c : cameras) repo.deleteCamera(c.id());
                 guests.deleteAllFor(id);
+                faces.deleteAllFor(id);
                 repo.markPurged(id);
                 purged++;
             } catch (RuntimeException ex) {

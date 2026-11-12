@@ -13,7 +13,7 @@ import org.springframework.stereotype.Repository;
 /** SQL access (JdbcClient) for events and their cameras. */
 @Repository
 public class EventRepository {
-    public record Event(UUID id, String ownerSub, String name, String slug, LocalDate eventDate, String icon, boolean listed, String publicToken, OffsetDateTime createdAt, String accessPasswordEnc, boolean guestUploadsEnabled, int guestUploadLimit) {}
+    public record Event(UUID id, String ownerSub, String name, String slug, LocalDate eventDate, String icon, boolean listed, String publicToken, OffsetDateTime createdAt, String accessPasswordEnc, boolean guestUploadsEnabled, int guestUploadLimit, boolean faceSearchEnabled) {}
     /** What the event got from its credit: plan key ("trial" or "full"), limits and when it closes and its images are deleted. */
     public record Limits(UUID eventId, String plan, int maxPhotos, long maxBytes, OffsetDateTime expiresAt, OffsetDateTime purgeAfter, OffsetDateTime purgedAt) {}
     private static final String LIMITS = "select id as event_id, plan, max_photos, max_bytes, expires_at, purge_after, purged_at from events";
@@ -104,6 +104,10 @@ public class EventRepository {
 
     public void setGuestUploads(UUID id, boolean enabled, int limit) {
         jdbc.sql("update events set guest_uploads_enabled = ?, guest_upload_limit = ? where id = ?").params(enabled, limit, id).update();
+    }
+
+    public void setFaceSearch(UUID id, boolean enabled) {
+        jdbc.sql("update events set face_search_enabled = ? where id = ?").params(enabled, id).update();
     }
 
     public void updateListed(UUID id, boolean listed) {

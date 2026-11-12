@@ -21,6 +21,7 @@ import ro.ghil.memoriesbe.events.EventPurger;
 import ro.ghil.memoriesbe.events.EventRepository;
 import ro.ghil.memoriesbe.events.EventRepository.Camera;
 import ro.ghil.memoriesbe.events.GuestRepository;
+import ro.ghil.memoriesbe.faces.FaceRepository;
 import ro.ghil.memoriesbe.sftpgo.SftpGoClient;
 import ro.ghil.memoriesbe.storage.PhotoStorage;
 
@@ -30,7 +31,8 @@ class PurgeTests {
 	private final SftpGoClient sftpgo = mock(SftpGoClient.class);
 	private final PhotoStorage storage = mock(PhotoStorage.class);
 	private final GuestRepository guests = mock(GuestRepository.class);
-	private final EventPurger purger = new EventPurger(repo, sftpgo, storage, guests);
+	private final FaceRepository faces = mock(FaceRepository.class);
+	private final EventPurger purger = new EventPurger(repo, sftpgo, storage, guests, faces);
 	private final OffsetDateTime now = OffsetDateTime.parse("2027-03-01T03:30:00Z");
 
 	private Camera camera(UUID event, String user) {
@@ -44,11 +46,12 @@ class PurgeTests {
 		when(repo.dueForPurge(now, 50)).thenReturn(List.of(id));
 		when(repo.cameras(id)).thenReturn(List.of(cam));
 		assertEquals(1, purger.purgeDue(now));
-		var order = inOrder(sftpgo, storage, repo, guests);
+		var order = inOrder(sftpgo, storage, repo, guests, faces);
 		order.verify(sftpgo).deleteUser("cam_x");
 		order.verify(storage).deleteAll("events/" + id + "/");
 		order.verify(repo).deleteCamera(cam.id());
 		order.verify(guests).deleteAllFor(id);
+		order.verify(faces).deleteAllFor(id);
 		order.verify(repo).markPurged(id);
 		verify(repo, never()).deleteEvent(any());
 	}

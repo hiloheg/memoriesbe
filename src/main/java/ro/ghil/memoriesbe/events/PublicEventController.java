@@ -29,8 +29,8 @@ class PublicEventController {
     record Folder(UUID id, String name, String kind, List<GalleryPhoto> photos) {}
     /** `url` is the original; `thumb` (grid) and `view` (full screen) are small copies, relative to the API address, or null when we cannot make links. */
     record GalleryPhoto(String name, String url, String thumb, String view) {}
-    /** `guestLimit` is how many photos each guest may add; 0 when guest uploads are off. */
-    record Gallery(String name, int guestLimit, List<Folder> folders, String logoUrl, Features features) {}
+    /** `guestLimit` is how many photos each guest may add; 0 when guest uploads are off. `faceSearch` is true when guests may find their photos by scanning their face. */
+    record Gallery(String name, int guestLimit, List<Folder> folders, String logoUrl, Features features, boolean faceSearch) {}
     /** What the owner has unlocked: their page look, the logo on downloads, and the photo editor for guests. All come with the first purchase. */
     record Features(boolean personalized, boolean editor, boolean logo) {}
     /** `camera` is the tag label (camera or guest name); `byId` is the camera or guest id used for filtering. */
@@ -128,7 +128,7 @@ class PublicEventController {
         List<Folder> folders = sources(event).stream()
                 .map(src -> new Folder(src.id(), src.label(), src.kind(), storage.list(src.prefix()).stream().map(this::galleryPhoto).toList()))
                 .toList();
-        return new Gallery(event.name(), guestLimit(event), folders, logoUrl(event), features(event));
+        return new Gallery(event.name(), guestLimit(event), folders, logoUrl(event), features(event), event.faceSearchEnabled() && credits.unlocked(event.ownerSub()));
     }
 
     private Features features(Event event) {

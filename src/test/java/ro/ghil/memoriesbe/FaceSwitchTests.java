@@ -118,4 +118,13 @@ class FaceSwitchTests {
 		mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/public/photographers/ana/events/nunta"))
 				.andExpect(status().isOk()).andExpect(jsonPath("$.faceSearch", is(false)));
 	}
+
+	@Test
+	void theProfilePhotoListSaysWhetherFaceSearchIsOffered() throws Exception {
+		when(repo.eventBySlugs("ana", "nunta")).thenReturn(Optional.of(event(true)));
+		var req = org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/public/photographers/ana/events/nunta/photos");
+		mvc.perform(req).andExpect(status().isOk()).andExpect(jsonPath("$.faceSearch", is(true)));
+		when(engine.available()).thenReturn(false);
+		mvc.perform(req).andExpect(status().isOk()).andExpect(jsonPath("$.faceSearch", is(false)));
+	}
 }

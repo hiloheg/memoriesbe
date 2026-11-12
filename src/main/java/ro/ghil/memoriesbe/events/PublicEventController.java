@@ -40,7 +40,7 @@ class PublicEventController {
     /** Something photos can be filtered by: one camera or one guest. */
     record Tag(String id, String label, String kind, int count) {}
     /** One page of an event's photos from all cameras and guests, newest upload first. `next` is the offset to ask for next, or null at the end. `total` counts the filtered photos, `tags` always cover the whole event. */
-    record PhotoPage(String name, LocalDate eventDate, int total, List<StreamPhoto> photos, Integer next, List<Tag> tags, int guestLimit, String logoUrl, Features features) {}
+    record PhotoPage(String name, LocalDate eventDate, int total, List<StreamPhoto> photos, Integer next, List<Tag> tags, int guestLimit, String logoUrl, Features features, boolean faceSearch) {}
     private record Tagged(PhotoStorage.Entry entry, Source source) {}
 
     private static final int MAX_PAGE = 60;
@@ -107,7 +107,7 @@ class PublicEventController {
                 .map(t -> new StreamPhoto(t.entry().name(), storage.signedUrl(t.entry().key()), t.source().label(), t.source().id().toString(), t.source().kind(),
                         thumbs.url(t.entry().key(), t.entry().modified().getEpochSecond(), 480), thumbs.url(t.entry().key(), t.entry().modified().getEpochSecond(), 1600)))
                 .toList();
-        return new PhotoPage(event.name(), event.eventDate(), all.size(), page, to < all.size() ? to : null, tags, guestLimit(event), logoUrl(event), features(event));
+        return new PhotoPage(event.name(), event.eventDate(), all.size(), page, to < all.size() ? to : null, tags, guestLimit(event), logoUrl(event), features(event), faceSearchOffered(event));
     }
 
     private List<Source> sources(Event event) {
@@ -129,7 +129,12 @@ class PublicEventController {
         List<Folder> folders = sources(event).stream()
                 .map(src -> new Folder(src.id(), src.label(), src.kind(), storage.list(src.prefix()).stream().map(this::galleryPhoto).toList()))
                 .toList();
-        return new Gallery(event.name(), guestLimit(event), folders, logoUrl(event), features(event), event.faceSearchEnabled() && faceEngine.available() && credits.unlocked(event.ownerSub()));
+        return new Gallery(event.name(), guestLimit(event), folders, logoUrl(event), features(event), faceSearchOffered(event));
+    }
+
+    /** Guests may find their photos by face when the owner switched it on and paid, and the server has the feature and its models. */
+    private boolean faceSearchOffered(Event event) {
+        return event.faceSearchEnabled() && faceEngine.available() && credits.unlocked(event.ownerSub());
     }
 
     private Features features(Event event) {

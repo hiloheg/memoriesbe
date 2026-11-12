@@ -158,7 +158,7 @@ class MemoriesbeApplicationTests {
 		java.time.Instant expected = today.plusDays(4).atStartOfDay(java.time.ZoneOffset.UTC).toInstant();
 		org.mockito.Mockito.verify(sftpgo).createUser(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(),
 				org.mockito.ArgumentMatchers.startsWith("events/" + id + "/"), org.mockito.ArgumentMatchers.eq(expected),
-				org.mockito.ArgumentMatchers.eq(3000), org.mockito.ArgumentMatchers.eq(42949672960L));
+				org.mockito.ArgumentMatchers.eq(3000), org.mockito.ArgumentMatchers.eq(500L * 1024 * 1024 * 1024));
 	}
 
 	@Test

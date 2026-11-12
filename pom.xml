@@ -70,6 +70,13 @@
 			<version>0.4.20</version>
 		</dependency>
 
+		<!-- OpenCV with its native libraries bundled: YuNet face detection and SFace face recognition. -->
+		<dependency>
+			<groupId>org.openpnp</groupId>
+			<artifactId>opencv</artifactId>
+			<version>4.9.0-0</version>
+		</dependency>
+
 		<dependency>
 			<groupId>org.postgresql</groupId>
 			<artifactId>postgresql</artifactId>

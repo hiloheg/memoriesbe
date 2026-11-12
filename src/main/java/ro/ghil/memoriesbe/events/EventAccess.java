@@ -22,7 +22,7 @@ public class EventAccess {
     }
 
     /** 401 when no password was sent, 403 when it is wrong. */
-    void require(Event e, String given) {
+    public void require(Event e, String given) {
         if (!isProtected(e)) return;
         if (given == null || given.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "This event is protected. Enter its password.");

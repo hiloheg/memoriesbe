@@ -68,6 +68,8 @@ app:
     allow-test: ${LEMONSQUEEZY_ALLOW_TEST:false}
   public-base-url: ${PUBLIC_BASE_URL:http://localhost:5173}
   faces:
+    # Master switch for face search. Off unless FACE_SEARCH_ENABLED=true: nothing is indexed, no guest sees the button, nobody can switch it on for an event.
+    enabled: ${FACE_SEARCH_ENABLED:false}
     # Folder with the two face models (see the Dockerfile). Empty = face search is unavailable and nothing is indexed.
     model-dir: ${FACE_MODEL_DIR:}
     # Photos looked at per run, and the pause between runs. Both keep the server calm while photos are being indexed.

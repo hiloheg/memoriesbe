@@ -17,6 +17,7 @@ import org.springframework.web.server.ResponseStatusException;
 import ro.ghil.memoriesbe.credits.CreditService;
 import ro.ghil.memoriesbe.events.EventRepository.Event;
 import ro.ghil.memoriesbe.events.EventSources.Source;
+import ro.ghil.memoriesbe.faces.FaceEngine;
 import ro.ghil.memoriesbe.profile.ProfileRepository;
 import ro.ghil.memoriesbe.profile.ProfileViews;
 import ro.ghil.memoriesbe.storage.PhotoStorage;
@@ -55,10 +56,12 @@ class PublicEventController {
 
     private final EventLifetime lifetime;
     private final CreditService credits;
+    private final FaceEngine faceEngine;
     private final EventSources eventSources;
 
     PublicEventController(EventRepository repo, PhotoStorage storage, EventAccess access, GuestRepository guests,
-                          ProfileRepository profiles, ProfileViews views, ThumbLinks thumbs, EventLifetime lifetime, CreditService credits, EventSources eventSources) {
+                          ProfileRepository profiles, ProfileViews views, ThumbLinks thumbs, EventLifetime lifetime, CreditService credits, EventSources eventSources, FaceEngine faceEngine) {
+        this.faceEngine = faceEngine;
         this.eventSources = eventSources;
         this.credits = credits;
         this.lifetime = lifetime;
@@ -126,7 +129,7 @@ class PublicEventController {
         List<Folder> folders = sources(event).stream()
                 .map(src -> new Folder(src.id(), src.label(), src.kind(), storage.list(src.prefix()).stream().map(this::galleryPhoto).toList()))
                 .toList();
-        return new Gallery(event.name(), guestLimit(event), folders, logoUrl(event), features(event), event.faceSearchEnabled() && credits.unlocked(event.ownerSub()));
+        return new Gallery(event.name(), guestLimit(event), folders, logoUrl(event), features(event), event.faceSearchEnabled() && faceEngine.available() && credits.unlocked(event.ownerSub()));
     }
 
     private Features features(Event event) {

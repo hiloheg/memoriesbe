@@ -27,6 +27,7 @@ import ro.ghil.memoriesbe.credits.CreditService;
 import ro.ghil.memoriesbe.events.EventRepository;
 import ro.ghil.memoriesbe.events.GuestRepository;
 import ro.ghil.memoriesbe.events.GuestUploadService;
+import ro.ghil.memoriesbe.faces.FaceEngine;
 import ro.ghil.memoriesbe.faces.FaceRepository;
 import ro.ghil.memoriesbe.profile.ProfileRepository;
 import ro.ghil.memoriesbe.sftpgo.SftpGoClient;
@@ -46,6 +47,7 @@ class FaceSwitchTests {
 	@MockitoBean GuestUploadService guestUploads;
 	@MockitoBean CreditService credits;
 	@MockitoBean FaceRepository faces;
+	@MockitoBean FaceEngine engine;
 
 	private final UUID id = UUID.randomUUID();
 
@@ -58,6 +60,7 @@ class FaceSwitchTests {
 		when(repo.eventOf(id, "s1")).thenReturn(Optional.of(event(false)), Optional.of(event(true)));
 		when(repo.eventOf(id, "intruder")).thenReturn(Optional.empty());
 		when(credits.unlocked("s1")).thenReturn(true);
+		when(engine.available()).thenReturn(true);
 	}
 
 	private ResultActions send(String sub, boolean enabled) throws Exception {
@@ -67,7 +70,7 @@ class FaceSwitchTests {
 
 	@Test
 	void ownerWhoPaidCanSwitchItOn() throws Exception {
-		send("s1", true).andExpect(status().isOk()).andExpect(jsonPath("$.faceSearchEnabled", is(true)));
+		send("s1", true).andExpect(status().isOk()).andExpect(jsonPath("$.faceSearchEnabled", is(true))).andExpect(jsonPath("$.faceSearchAvailable", is(true)));
 		verify(repo).setFaceSearch(id, true);
 	}
 
@@ -96,6 +99,22 @@ class FaceSwitchTests {
 				.andExpect(status().isOk()).andExpect(jsonPath("$.faceSearch", is(false)));
 		when(credits.unlocked("s1")).thenReturn(true);
 		when(repo.eventBySlugs("ana", "nunta")).thenReturn(Optional.of(event(false)));
+		mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/public/photographers/ana/events/nunta"))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.faceSearch", is(false)));
+	}
+
+	@Test
+	void withTheFeatureFlagOffNobodyCanSwitchItOnAndTheEventSaysItIsUnavailable() throws Exception {
+		when(engine.available()).thenReturn(false);
+		send("s1", true).andExpect(status().isForbidden());
+		verify(repo, never()).setFaceSearch(any(), anyBoolean());
+		send("s1", false).andExpect(status().isOk()).andExpect(jsonPath("$.faceSearchAvailable", is(false)));
+	}
+
+	@Test
+	void withTheFeatureFlagOffTheGalleryNeverOffersFaceSearch() throws Exception {
+		when(engine.available()).thenReturn(false);
+		when(repo.eventBySlugs("ana", "nunta")).thenReturn(Optional.of(event(true)));
 		mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/public/photographers/ana/events/nunta"))
 				.andExpect(status().isOk()).andExpect(jsonPath("$.faceSearch", is(false)));
 	}

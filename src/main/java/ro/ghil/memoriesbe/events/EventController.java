@@ -23,6 +23,7 @@ import ro.ghil.memoriesbe.credits.CreditService;
 import ro.ghil.memoriesbe.credits.Plan;
 import ro.ghil.memoriesbe.events.EventRepository.Event;
 import ro.ghil.memoriesbe.events.EventRepository.Limits;
+import ro.ghil.memoriesbe.faces.FaceEngine;
 import ro.ghil.memoriesbe.profile.ProfileRepository;
 import ro.ghil.memoriesbe.profile.Slugs;
 import ro.ghil.memoriesbe.sftpgo.CredentialGenerator;
@@ -44,7 +45,7 @@ class EventController {
     record DetailsRequest(String name, String icon) {}
     record EventDto(UUID id, String name, String slug, String shareUrl, LocalDate eventDate, String icon, String visibility, String accessPassword, boolean main,
                     OffsetDateTime createdAt, int cameraCount, Instant cameraAccessEndsAt, boolean cameraAccessExpired,
-                    boolean guestUploadsEnabled, int guestUploadLimit, boolean faceSearchEnabled,
+                    boolean guestUploadsEnabled, int guestUploadLimit, boolean faceSearchEnabled, boolean faceSearchAvailable,
                     String plan, int maxPhotos, int maxCameras, OffsetDateTime expiresAt, OffsetDateTime purgeAfter, boolean expired, OffsetDateTime purgedAt) {}
     record CameraDto(UUID id, String name, String username, OffsetDateTime createdAt) {}
     record EventDetail(EventDto event, List<CameraDto> cameras) {}
@@ -63,6 +64,7 @@ class EventController {
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final CreditService credits;
+    private final FaceEngine faceEngine;
     private final EventLifetime lifetime;
     private final EventRepository repo;
     private final SftpGoClient sftpgo;
@@ -75,7 +77,8 @@ class EventController {
     private final String publicBaseUrl;
 
     EventController(CreditService credits, EventLifetime lifetime, EventRepository repo, SftpGoClient sftpgo, PhotoStorage storage, ProfileRepository profiles, CredentialGenerator credentials, SecretBox secrets, EventAccess access, Props.Ftp ftp,
-                    @Value("${app.public-base-url}") String publicBaseUrl) {
+                    @Value("${app.public-base-url}") String publicBaseUrl, FaceEngine faceEngine) {
+        this.faceEngine = faceEngine;
         this.credits = credits;
         this.lifetime = lifetime;
         this.repo = repo;
@@ -169,6 +172,9 @@ class EventController {
     @PutMapping("/{id}/face-search")
     EventDto changeFaceSearch(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id, @RequestBody FaceSearchRequest req) {
         owned(jwt, id);
+        if (req.enabled() && !faceEngine.available()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Face search is not available yet.");
+        }
         if (req.enabled() && !credits.unlocked(jwt.getSubject())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Face search comes with your first purchase.");
         }
@@ -379,7 +385,7 @@ class EventController {
         boolean expired = limits != null && (limits.purgedAt() != null || limits.expiresAt().isBefore(OffsetDateTime.now()));
         return new EventDto(e.id(), e.name(), e.slug(), shareUrl(e), e.eventDate(), e.icon(),
                 !e.listed() ? "private" : EventAccess.isProtected(e) ? "protected" : "public", access.passwordOf(e), e.id().equals(mainId), e.createdAt(), cameraCount,
-                ends, !Instant.now().isBefore(ends), e.guestUploadsEnabled(), e.guestUploadLimit(), e.faceSearchEnabled(),
+                ends, !Instant.now().isBefore(ends), e.guestUploadsEnabled(), e.guestUploadLimit(), e.faceSearchEnabled(), faceEngine.available(),
                 limits == null ? null : limits.plan(), limits == null ? 0 : limits.maxPhotos(), plan == null ? Integer.MAX_VALUE : plan.maxCameras(),
                 limits == null ? null : limits.expiresAt(), limits == null ? null : limits.purgeAfter(), expired, limits == null ? null : limits.purgedAt());
     }
